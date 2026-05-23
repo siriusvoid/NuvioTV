@@ -152,6 +152,7 @@ class MetaDetailsViewModel @Inject constructor(
         observeBlurUnwatchedEpisodes()
         observeShowFullReleaseDate()
         observeHideUnreleasedContent()
+        observeShowRatings()
         loadMeta()
     }
 
@@ -161,6 +162,18 @@ class MetaDetailsViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .collectLatest { enabled ->
                     hideUnreleasedContent = enabled
+                }
+        }
+    }
+
+    private fun observeShowRatings() {
+        viewModelScope.launch {
+            tmdbSettingsDataStore.settings
+                .distinctUntilChanged { old, new -> old.showRatings == new.showRatings }
+                .collectLatest { settings ->
+                    _uiState.update { state ->
+                        state.copy(showRatings = settings.showRatings)
+                    }
                 }
         }
     }

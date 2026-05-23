@@ -287,6 +287,7 @@ internal fun HeroTitleBlock(
     enrichmentActive: () -> Boolean = { false },
     portraitMode: Boolean,
     trailerPlaying: () -> Boolean = { false },
+    showRatings: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val currentPreview = previewProvider()
@@ -314,7 +315,8 @@ internal fun HeroTitleBlock(
         HeroTitleContent(
             previewProvider = { displayPreview },
             portraitMode = portraitMode,
-            trailerPlaying = trailerPlaying
+            trailerPlaying = trailerPlaying,
+            showRatings = showRatings
         )
     }
 }
@@ -323,7 +325,8 @@ internal fun HeroTitleBlock(
 private fun HeroTitleContent(
     previewProvider: () -> HeroPreview?,
     portraitMode: Boolean,
-    trailerPlaying: () -> Boolean = { false }
+    trailerPlaying: () -> Boolean = { false },
+    showRatings: Boolean = true
 ) {
     val preview = previewProvider() ?: return
     val highlighterEnabled = LocalRecompositionHighlighterEnabled.current
@@ -508,7 +511,7 @@ private fun HeroTitleContent(
                             maxLines = 1
                         )
                     }
-                    if (showImdbInPrimaryWithHighlight && !imdbText.isNullOrBlank()) {
+                    if (showRatings && showImdbInPrimaryWithHighlight && !imdbText.isNullOrBlank()) {
                         HeroImdbMeta(
                             imdbText = imdbText,
                             textStyle = labelMedium,
@@ -516,6 +519,8 @@ private fun HeroTitleContent(
                             logoSize = 30.dp * metaScale,
                             spacing = imdbMetaSpacing
                         )
+                    } else if (showImdbInPrimaryWithHighlight && !imdbText.isNullOrBlank()) {
+                        Box(modifier = Modifier.height(30.dp * metaScale))
                     }
                 }
             }
@@ -537,7 +542,7 @@ private fun HeroTitleContent(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (secondaryHighlightText != null && (hasSecondaryBadge || showImdbInSecondary || secondaryDetails.isNotEmpty())) {
+                if (secondaryHighlightText != null && (hasSecondaryBadge || (showRatings && showImdbInSecondary) || secondaryDetails.isNotEmpty())) {
                     HeroMetaDivider(metaScale)
                 }
                 if (ageRatingBadge != null && statusBadge != null) {
@@ -563,10 +568,10 @@ private fun HeroTitleContent(
                         )
                     }
                 }
-                if ((ageRatingBadge != null || statusBadge != null) && (showImdbInSecondary || secondaryDetails.isNotEmpty())) {
+                if ((ageRatingBadge != null || statusBadge != null) && ((showRatings && showImdbInSecondary) || secondaryDetails.isNotEmpty())) {
                     HeroMetaDivider(metaScale)
                 }
-                if (showImdbInSecondary) {
+                if (showRatings && showImdbInSecondary) {
                     HeroImdbMeta(
                         imdbText = preview.imdbText.orEmpty(),
                         textStyle = labelMedium,
@@ -574,8 +579,10 @@ private fun HeroTitleContent(
                         logoSize = 30.dp * metaScale,
                         spacing = imdbMetaSpacing
                     )
+                } else if (showImdbInSecondary) {
+                    Box(modifier = Modifier.height(30.dp * metaScale))
                 }
-                if (showImdbInSecondary && secondaryDetails.isNotEmpty()) {
+                if (showRatings && showImdbInSecondary && secondaryDetails.isNotEmpty()) {
                     HeroMetaDivider(metaScale)
                 }
                 secondaryDetails.forEachIndexed { index, value ->

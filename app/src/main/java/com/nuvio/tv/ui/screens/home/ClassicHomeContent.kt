@@ -418,6 +418,7 @@ fun ClassicHomeContent(
                         }
                     },
                     onItemFocus = handleHeroFocus,
+                    showRatings = uiState.showRatings,
                     onItemClick = { item ->
                         onNavigateToDetail(
                             item.id,

@@ -57,6 +57,7 @@ data class HomeUiState(
     val blurUnwatchedEpisodes: Boolean = false,
     val useEpisodeThumbnailsInCw: Boolean = true,
     val heroEnrichmentEnabled: Boolean = false,
+    val showRatings: Boolean = true,
     val startupAuthNotice: StartupAuthNotice? = null,
     val homeRows: List<HomeRow> = emptyList()
 )

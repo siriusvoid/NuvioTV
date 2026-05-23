@@ -252,6 +252,7 @@ fun EpisodesRow(
     watchedEpisodes: Set<Pair<Int, Int>> = emptySet(),
     episodeWatchedPendingKeys: Set<String> = emptySet(),
     blurUnwatchedEpisodes: Boolean = false,
+    showRatings: Boolean = true,
     onEpisodeClick: (Video) -> Unit,
     onEpisodeManualPlayClick: (Video) -> Unit = onEpisodeClick,
     onEpisodeStartFromBeginningClick: (Video) -> Unit = onEpisodeClick,
@@ -359,6 +360,7 @@ fun EpisodesRow(
                 imdbRating = imdbRating,
                 isMarkedWatched = isMarkedWatched,
                 blurUnwatched = blurUnwatchedEpisodes,
+                showRatings = showRatings,
                 cardMetrics = cardMetrics,
                 onClick = episodeOnClick,
                 onLongPress = episodeOnLongPress,
@@ -444,6 +446,7 @@ private fun EpisodeCard(
     imdbRating: Double? = null,
     isMarkedWatched: Boolean = false,
     blurUnwatched: Boolean = false,
+    showRatings: Boolean = true,
     cardMetrics: EpisodeCardMetrics,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
@@ -735,7 +738,7 @@ private fun EpisodeCard(
                     )
                 }
 
-                if (runtimeLabel != null || ratingLabel != null || formattedDate.isNotBlank()) {
+                if (runtimeLabel != null || (showRatings && ratingLabel != null) || formattedDate.isNotBlank()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
@@ -760,23 +763,25 @@ private fun EpisodeCard(
                             }
                         }
 
-                        ratingLabel?.let { rating ->
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ImdbRatingSourceLabel(
-                                    logoModifier = Modifier
-                                        .width(cardMetrics.imdbLogoWidth)
-                                        .height(cardMetrics.imdbLogoHeight),
-                                    textStyle = metaLabelStyle,
-                                    textColor = textSecondary
-                                )
-                                Text(
-                                    text = rating,
-                                    style = ratingStyle,
-                                    maxLines = 1
-                                )
+                        if (showRatings) {
+                            ratingLabel?.let { rating ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    ImdbRatingSourceLabel(
+                                        logoModifier = Modifier
+                                            .width(cardMetrics.imdbLogoWidth)
+                                            .height(cardMetrics.imdbLogoHeight),
+                                        textStyle = metaLabelStyle,
+                                        textColor = textSecondary
+                                    )
+                                    Text(
+                                        text = rating,
+                                        style = ratingStyle,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
 

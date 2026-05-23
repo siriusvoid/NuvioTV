@@ -77,7 +77,8 @@ fun HeroCarousel(
     onItemFocus: (MetaPreview) -> Unit = {},
     focusRequester: FocusRequester? = null,
     fullWidth: Dp = Dp.Unspecified,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showRatings: Boolean = true
 ) {
     if (items.isEmpty()) return
 
@@ -152,7 +153,7 @@ fun HeroCarousel(
             label = "heroSlide"
         ) { index ->
             val item = items.getOrNull(index) ?: return@Crossfade
-            HeroCarouselSlide(item = item)
+            HeroCarouselSlide(item = item, showRatings = showRatings)
         }
 
         // Indicator dots — optimized to minimize recompositions and layout passes
@@ -195,7 +196,8 @@ fun HeroCarousel(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun HeroCarouselSlide(
-    item: MetaPreview
+    item: MetaPreview,
+    showRatings: Boolean = true
 ) {
     val highlighterEnabled = LocalRecompositionHighlighterEnabled.current
     val context = LocalContext.current
@@ -312,22 +314,24 @@ private fun HeroCarouselSlide(
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                item.imdbRating?.let { rating ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                    ) {
-                        ImdbRatingSourceLabel(
-                            logoModifier = Modifier.size(30.dp),
-                            textStyle = MaterialTheme.typography.labelLarge,
-                            textColor = Color.White.copy(alpha = 0.8f)
-                        )
-                        val ratingText = remember(rating) { String.format("%.1f", rating) }
-                        Text(
-                            text = ratingText,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
+                if (showRatings) {
+                    item.imdbRating?.let { rating ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                        ) {
+                            ImdbRatingSourceLabel(
+                                logoModifier = Modifier.size(30.dp),
+                                textStyle = MaterialTheme.typography.labelLarge,
+                                textColor = Color.White.copy(alpha = 0.8f)
+                            )
+                            val ratingText = remember(rating) { String.format("%.1f", rating) }
+                            Text(
+                                text = ratingText,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
 

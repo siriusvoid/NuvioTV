@@ -10,6 +10,7 @@ data class TmdbSettings(
     val useArtwork: Boolean = true,
     // Group: Basic Info (description, genres, rating)
     val useBasicInfo: Boolean = true,
+    val showRatings: Boolean = true,
     // Group: Details (runtime, status, country, language)
     val useDetails: Boolean = true,
     // Group: Release Dates (release date / air date)

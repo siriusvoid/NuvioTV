@@ -965,6 +965,7 @@ fun ModernHomeContent(
                         state.fullScreenBackdrop && shouldPlayTrailerLambda() && heroTrailerRenderedLambda()
                     }
                 },
+                showRatings = uiState.showRatings,
                 modifier = heroMetadataModifier
             )
 

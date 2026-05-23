@@ -101,6 +101,7 @@ fun HeroContentSection(
     mdbListRatings: MDBListRatings? = null,
     hideMetaInfoImdb: Boolean = false,
     tmdbRating: Float? = null,
+    showRatings: Boolean = true,
     showFullReleaseDate: Boolean = true,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
@@ -309,7 +310,11 @@ fun HeroContentSection(
                     }
 
                     if (mdbListRatings?.isEmpty() == false) {
-                        MDBListRatingsRow(ratings = mdbListRatings)
+                        if (showRatings) {
+                            MDBListRatingsRow(ratings = mdbListRatings)
+                        } else {
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
                         Spacer(modifier = Modifier.height(14.dp))
                     }
 
@@ -330,7 +335,8 @@ fun HeroContentSection(
                         meta = meta,
                         hideImdbRating = hideMetaInfoImdb,
                         showFullReleaseDate = showFullReleaseDate,
-                        tmdbRating = tmdbRating
+                        tmdbRating = tmdbRating,
+                        showRatings = showRatings
                     )
                 }
             }
@@ -581,7 +587,8 @@ private fun MetaInfoRow(
     meta: Meta,
     hideImdbRating: Boolean,
     showFullReleaseDate: Boolean = true,
-    tmdbRating: Float? = null
+    tmdbRating: Float? = null,
+    showRatings: Boolean = true
 ) {
     val context = LocalContext.current
     val genresText = remember(meta.genres) { meta.genres.joinToString(" • ") }
@@ -653,7 +660,7 @@ private fun MetaInfoRow(
                     style = MaterialTheme.typography.labelLarge,
                     color = NuvioTheme.extendedColors.textSecondary
                 )
-                if (yearText != null || shouldShowImdbRating || shouldShowTmdbRating) {
+                if (yearText != null || (showRatings && (shouldShowImdbRating || shouldShowTmdbRating))) {
                     MetaInfoDivider()
                 }
             }
@@ -664,48 +671,54 @@ private fun MetaInfoRow(
                     style = MaterialTheme.typography.labelLarge,
                     color = NuvioTheme.extendedColors.textSecondary
                 )
-                if (shouldShowImdbRating || shouldShowTmdbRating) {
+                if (showRatings && (shouldShowImdbRating || shouldShowTmdbRating)) {
                     MetaInfoDivider()
                 }
             }
 
-            imdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    ImdbRatingSourceLabel(
-                        logoModifier = Modifier.size(30.dp),
-                        textStyle = MaterialTheme.typography.labelLarge,
-                        textColor = NuvioTheme.extendedColors.textSecondary
-                    )
-                    val ratingText = remember(rating) { String.format("%.1f", rating) }
-                    Text(
-                        text = ratingText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.extendedColors.textSecondary
-                    )
+            if (showRatings) {
+                imdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        ImdbRatingSourceLabel(
+                            logoModifier = Modifier.size(30.dp),
+                            textStyle = MaterialTheme.typography.labelLarge,
+                            textColor = NuvioTheme.extendedColors.textSecondary
+                        )
+                        val ratingText = remember(rating) { String.format("%.1f", rating) }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
                 }
-            }
 
-            tmdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    AsyncImage(
-                        model = tmdbModel,
-                        contentDescription = null,
-                        modifier = Modifier.size(NuvioTheme.spacing.xl),
-                        contentScale = ContentScale.Fit
-                    )
-                    val ratingText = remember(rating) { (rating * 10).toInt().toString() }
-                    Text(
-                        text = ratingText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.extendedColors.textSecondary
-                    )
+                tmdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        AsyncImage(
+                            model = tmdbModel,
+                            contentDescription = null,
+                            modifier = Modifier.size(NuvioTheme.spacing.xl),
+                            contentScale = ContentScale.Fit
+                        )
+                        val ratingText = remember(rating) { (rating * 10).toInt().toString() }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
                 }
+            } else if (shouldShowImdbRating || shouldShowTmdbRating) {
+                // Preserve height so hero content position stays stable when ratings hidden
+                val reservedHeight = if (shouldShowImdbRating) 30.dp else 24.dp
+                Spacer(modifier = Modifier.height(reservedHeight))
             }
         }
 

@@ -476,6 +476,7 @@ fun MetaDetailsScreen(
                     mdbListRatings = uiState.mdbListRatings,
                     showMdbListImdb = uiState.showMdbListImdb,
                     tmdbRating = uiState.tmdbRating,
+                    showRatings = uiState.showRatings,
                     comments = uiState.comments,
                     commentsCurrentPage = uiState.commentsCurrentPage,
                     commentsPageCount = uiState.commentsPageCount,
@@ -834,6 +835,7 @@ private fun MetaDetailsContent(
     mdbListRatings: MDBListRatings?,
     showMdbListImdb: Boolean,
     tmdbRating: Float?,
+    showRatings: Boolean = true,
     comments: List<TraktCommentReview>,
     commentsCurrentPage: Int,
     commentsPageCount: Int,
@@ -1626,6 +1628,7 @@ private fun MetaDetailsContent(
                         hideMetaInfoImdb = showMdbListImdb,
                         tmdbRating = if (mdbListRatings?.isEmpty() != false) tmdbRating else null,
                         showFullReleaseDate = showFullReleaseDate,
+                        showRatings = showRatings,
                         trailerAvailable = trailerButtonEnabled && !trailerUrl.isNullOrBlank(),
                         onTrailerClick = onTrailerButtonClick,
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
@@ -1680,6 +1683,7 @@ private fun MetaDetailsContent(
                             watchedEpisodes = watchedEpisodes,
                             episodeWatchedPendingKeys = episodeWatchedPendingKeys,
                             blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                            showRatings = showRatings,
                             onEpisodeClick = episodeClick,
                             onEpisodeManualPlayClick = episodeManualClick,
                             onEpisodeStartFromBeginningClick = { video ->
@@ -1730,8 +1734,8 @@ private fun MetaDetailsContent(
                             }
                         )
                     }
+                }
             }
-        }
 
         // Cast / More like this section
         if (hasVisiblePeopleSection) {
