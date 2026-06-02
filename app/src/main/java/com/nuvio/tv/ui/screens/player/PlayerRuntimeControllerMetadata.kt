@@ -357,6 +357,12 @@ internal fun PlayerRuntimeController.showStreamSourceIndicator(stream: Stream) {
     }
 }
 
+/** Used instead of assigning skipIntervals directly, so the timeline markers stay in sync. */
+internal fun PlayerRuntimeController.setSkipIntervals(list: List<SkipInterval>) {
+    skipIntervals = list
+    _uiState.update { it.copy(timelineSegments = list) }
+}
+
 internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) {
     if (skipIntervals.isEmpty()) {
         lastAutoSkippedIntervalKey = null

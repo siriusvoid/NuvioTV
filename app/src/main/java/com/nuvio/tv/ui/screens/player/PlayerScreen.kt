@@ -25,6 +25,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +78,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -119,7 +123,9 @@ import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.data.repository.SkipInterval
 import com.nuvio.tv.ui.components.LoadingIndicator
+import com.nuvio.tv.ui.theme.ThemeColors
 import android.text.format.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -1894,6 +1900,7 @@ private fun PlayerControlsProgressBarHost(
     onFocused: (() -> Unit)? = null
 ) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     ProgressBar(
         currentPosition = playbackTimeline.currentPosition,
@@ -1909,7 +1916,8 @@ private fun PlayerControlsProgressBarHost(
         downFocusRequester = downFocusRequester,
         onUpKey = onUpKey,
         onFocused = onFocused,
-        bufferedPosition = playbackTimeline.bufferedPosition
+        bufferedPosition = playbackTimeline.bufferedPosition,
+        segments = uiState.timelineSegments
     )
 }
 
@@ -2013,7 +2021,9 @@ private fun ProgressBar(
     onUpKey: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
     /** Position (ms) up to which content is buffered. Pass 0 to skip the overlay. */
-    bufferedPosition: Long = 0L
+    bufferedPosition: Long = 0L,
+    /** Intro/recap/outro segments rendered as markers on the bar. */
+    segments: List<SkipInterval> = emptyList()
 ) {
     val progress = if (duration > 0) {
         (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
@@ -2139,13 +2149,38 @@ private fun ProgressBar(
                 .clip(RoundedCornerShape(3.dp))
                 .background(NuvioTheme.colors.Secondary)
         )
+
+        // Markers in white with alpha (purple when the accent itself is white)
+        if (duration > 0 && segments.isNotEmpty()) {
+            val segmentColor = if (NuvioTheme.colors.Secondary == ThemeColors.White.secondary) {
+                Color(0xFFCE93D8).copy(alpha = 0.60f)
+            } else {
+                Color.White.copy(alpha = 0.60f)
+            }
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val cornerPx = 3.dp.toPx()
+                segments.forEach { seg ->
+                    val startFrac = ((seg.startTime * 1000.0) / duration).coerceIn(0.0, 1.0).toFloat()
+                    val endFrac = ((seg.endTime * 1000.0) / duration).coerceIn(0.0, 1.0).toFloat()
+                    val widthPx = (endFrac - startFrac) * size.width
+                    if (widthPx <= 0.5f) return@forEach
+                    drawRoundRect(
+                        color = segmentColor,
+                        topLeft = Offset(startFrac * size.width, 0f),
+                        size = Size(widthPx, size.height),
+                        cornerRadius = CornerRadius(cornerPx, cornerPx),
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun SeekOverlay(
     currentPosition: Long,
-    duration: Long
+    duration: Long,
+    segments: List<SkipInterval> = emptyList()
 ) {
     Column(
         modifier = Modifier
@@ -2157,7 +2192,8 @@ private fun SeekOverlay(
                 currentPosition = currentPosition,
                 duration = duration,
                 onSeekPreview = {},
-                onSeekCommit = {}
+                onSeekCommit = {},
+                segments = segments
             )
         }
 
@@ -2180,10 +2216,12 @@ private fun SeekOverlay(
 @Composable
 private fun SeekOverlayHost(viewModel: PlayerViewModel) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     SeekOverlay(
         currentPosition = playbackTimeline.currentPosition,
-        duration = playbackTimeline.duration
+        duration = playbackTimeline.duration,
+        segments = uiState.timelineSegments
     )
 }
 

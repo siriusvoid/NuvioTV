@@ -426,7 +426,7 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
             if (!skipIntroEnabled) {
                 if (skipIntervals.isNotEmpty() || _uiState.value.activeSkipInterval != null) {
-                    skipIntervals = emptyList()
+                    setSkipIntervals(emptyList())
                     skipIntroFetchedKey = null
                     lastAutoSkippedIntervalKey = null
                     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }
@@ -521,9 +521,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         if (skipIntroFetchedKey == key) return
         skipIntroFetchedKey = key
         scope.launch {
-            skipIntervals = withTimeoutOrNull(15_000L) {
+            setSkipIntervals(withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForMal(malId, malEpisode)
-            } ?: emptyList()
+            } ?: emptyList())
         }
         return
     }
@@ -537,9 +537,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         if (skipIntroFetchedKey == key) return
         skipIntroFetchedKey = key
         scope.launch {
-            skipIntervals = withTimeoutOrNull(15_000L) {
+            setSkipIntervals(withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForKitsu(kitsuId, kitsuEpisode)
-            } ?: emptyList()
+            } ?: emptyList())
         }
         return
     }
@@ -552,9 +552,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
     skipIntroFetchedKey = key
 
     scope.launch {
-        skipIntervals = withTimeoutOrNull(15_000L) {
+        setSkipIntervals(withTimeoutOrNull(15_000L) {
             skipIntroRepository.getSkipIntervals(imdbId, season, episode)
-        } ?: emptyList()
+        } ?: emptyList())
     }
 }
 
