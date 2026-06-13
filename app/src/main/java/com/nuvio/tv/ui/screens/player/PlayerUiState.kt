@@ -175,6 +175,8 @@ data class PlayerUiState(
     // Skip intro
     val activeSkipInterval: SkipInterval? = null,
     val skipIntervalDismissed: Boolean = false,
+    // Intro/recap/outro segments shown as markers on the progress bar
+    val timelineSegments: List<SkipInterval> = emptyList(),
     // Next episode card
     val nextEpisode: NextEpisodeInfo? = null,
     val isNextEpisodeMetadataResolved: Boolean = false,

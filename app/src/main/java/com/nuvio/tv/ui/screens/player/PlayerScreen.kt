@@ -127,6 +127,7 @@ import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.data.local.StreamAutoPlayMode
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.data.repository.SkipInterval
 import com.nuvio.tv.ui.components.LoadingIndicator
 import android.text.format.DateFormat
 import java.util.Date
@@ -2304,6 +2305,7 @@ private fun PlayerControlsProgressBarHost(
     onFocused: (() -> Unit)? = null
 ) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     ProgressBar(
         currentPosition = playbackTimeline.currentPosition,
@@ -2319,7 +2321,8 @@ private fun PlayerControlsProgressBarHost(
         downFocusRequester = downFocusRequester,
         onUpKey = onUpKey,
         onFocused = onFocused,
-        bufferedPosition = playbackTimeline.bufferedPosition
+        bufferedPosition = playbackTimeline.bufferedPosition,
+        segments = uiState.timelineSegments
     )
 }
 
@@ -2471,7 +2474,9 @@ private fun ProgressBar(
     onUpKey: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
     /** Position (ms) up to which content is buffered. Pass 0 to skip the overlay. */
-    bufferedPosition: Long = 0L
+    bufferedPosition: Long = 0L,
+    /** Intro/recap/outro segments rendered as markers on the bar. */
+    segments: List<SkipInterval> = emptyList()
 ) {
     val accentBrush = ThemeColors.getColorPalette(NuvioTheme.currentTheme).accentBrush()
     val progress = if (duration > 0) {
@@ -2608,6 +2613,30 @@ private fun ProgressBar(
                 .clip(RoundedCornerShape(3.dp))
                 .background(accentBrush)
         )
+
+        // Markers in white with alpha (purple when the accent itself is white)
+        if (duration > 0 && segments.isNotEmpty()) {
+            val segmentColor = if (NuvioTheme.colors.Secondary == ThemeColors.White.secondary) {
+                Color(0xFFCE93D8).copy(alpha = 0.60f)
+            } else {
+                Color.White.copy(alpha = 0.60f)
+            }
+            segments.forEach { seg ->
+                val startFrac = ((seg.startTime * 1000.0) / duration).coerceIn(0.0, 1.0).toFloat()
+                val endFrac = ((seg.endTime * 1000.0) / duration).coerceIn(0.0, 1.0).toFloat()
+                val segWidth = endFrac - startFrac
+                if (segWidth > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .offset(x = trackWidth * startFrac)
+                            .width(trackWidth * segWidth)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(segmentColor)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -2615,7 +2644,8 @@ private fun ProgressBar(
 private fun SeekOverlay(
     currentPosition: Long,
     duration: Long,
-    bufferedPosition: Long = 0L
+    bufferedPosition: Long = 0L,
+    segments: List<SkipInterval> = emptyList()
 ) {
     Column(
         modifier = Modifier
@@ -2628,7 +2658,8 @@ private fun SeekOverlay(
                 duration = duration,
                 onSeekPreview = {},
                 onSeekCommit = {},
-                bufferedPosition = bufferedPosition
+                bufferedPosition = bufferedPosition,
+                segments = segments
             )
 
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
@@ -2651,11 +2682,13 @@ private fun SeekOverlay(
 @Composable
 private fun SeekOverlayHost(viewModel: PlayerViewModel) {
     val playbackTimeline by viewModel.playbackTimeline.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     SeekOverlay(
         currentPosition = playbackTimeline.currentPosition,
         duration = playbackTimeline.duration,
-        bufferedPosition = playbackTimeline.bufferedPosition
+        bufferedPosition = playbackTimeline.bufferedPosition,
+        segments = uiState.timelineSegments
     )
 }
 
