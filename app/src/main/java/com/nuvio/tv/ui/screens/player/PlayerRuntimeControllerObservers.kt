@@ -484,7 +484,7 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
 
             if (!skipIntroEnabled) {
                 if (skipIntervals.isNotEmpty() || _uiState.value.activeSkipInterval != null) {
-                    skipIntervals = emptyList()
+                    setSkipIntervals(emptyList())
                     skipIntroFetchedKey = null
                     autoSkippedIntervalKeys.clear()
                     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }
@@ -622,9 +622,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         skipIntroFetchedKey = key
         val imdbId = id?.takeIf { it.startsWith("tt") }
         scope.launch {
-            skipIntervals = withTimeoutOrNull(15_000L) {
+            setSkipIntervals(withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForMal(malId, malEpisode, imdbId = imdbId, imdbSeason = season, imdbEpisode = episode)
-            } ?: emptyList()
+            } ?: emptyList())
         }
         return
     }
@@ -639,9 +639,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         skipIntroFetchedKey = key
         val imdbId = id?.takeIf { it.startsWith("tt") }
         scope.launch {
-            skipIntervals = withTimeoutOrNull(15_000L) {
+            setSkipIntervals(withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForKitsu(kitsuId, kitsuEpisode, imdbId = imdbId, imdbSeason = season, imdbEpisode = episode)
-            } ?: emptyList()
+            } ?: emptyList())
         }
         return
     }
@@ -654,9 +654,9 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
     skipIntroFetchedKey = key
 
     scope.launch {
-        skipIntervals = withTimeoutOrNull(15_000L) {
+        setSkipIntervals(withTimeoutOrNull(15_000L) {
             skipIntroRepository.getSkipIntervals(imdbId, season, episode)
-        } ?: emptyList()
+        } ?: emptyList())
     }
 }
 
