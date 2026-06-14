@@ -282,6 +282,7 @@ internal fun HeroTitleBlock(
     previewProvider: () -> HeroPreview?,
     enrichmentActive: () -> Boolean = { false },
     portraitMode: Boolean,
+    hideParentalRating: Boolean = false,
     trailerPlaying: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
@@ -310,6 +311,7 @@ internal fun HeroTitleBlock(
         HeroTitleContent(
             previewProvider = { displayPreview },
             portraitMode = portraitMode,
+            hideParentalRating = hideParentalRating,
             trailerPlaying = trailerPlaying
         )
     }
@@ -319,6 +321,7 @@ internal fun HeroTitleBlock(
 private fun HeroTitleContent(
     previewProvider: () -> HeroPreview?,
     portraitMode: Boolean,
+    hideParentalRating: Boolean = false,
     trailerPlaying: () -> Boolean = { false }
 ) {
     val preview = previewProvider() ?: return
@@ -413,11 +416,13 @@ private fun HeroTitleContent(
             preview.secondaryHighlightText,
             preview.ageRatingText,
             preview.statusText,
-            preview.languageText
+            preview.languageText,
+            hideParentalRating
         ) {
             ModernHeroSecondaryMeta(
                 highlightText = preview.secondaryHighlightText?.trim()?.takeIf { it.isNotBlank() },
-                ageRating = preview.ageRatingText?.trim()?.takeIf { it.isNotBlank() },
+                ageRating = if (hideParentalRating) null
+                    else preview.ageRatingText?.trim()?.takeIf { it.isNotBlank() },
                 status = when (preview.statusText?.trim()?.lowercase()) {
                     "ended" -> strStatusEnded.uppercase()
                     "continuing", "returning series" -> strStatusContinuing.uppercase()

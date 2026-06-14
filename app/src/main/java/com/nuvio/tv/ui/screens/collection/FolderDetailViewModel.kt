@@ -61,6 +61,7 @@ data class FolderDetailUiState(
     val catalogTypeSuffixEnabled: Boolean = true,
     val hideUnreleasedContent: Boolean = false,
     val showFullReleaseDate: Boolean = true,
+    val hideParentalRating: Boolean = false,
     val modernLandscapePostersEnabled: Boolean = false,
     val modernHeroFullScreenBackdropEnabled: Boolean = false,
     val focusedPosterBackdropExpandEnabled: Boolean = false,
@@ -230,6 +231,7 @@ class FolderDetailViewModel @Inject constructor(
             val catalogTypeSuffixEnabled = layoutPreferenceDataStore.catalogTypeSuffixEnabled.first()
             val hideUnreleasedContent = layoutPreferenceDataStore.hideUnreleasedContent.first()
             val showFullReleaseDate = layoutPreferenceDataStore.showFullReleaseDate.first()
+            val hideParentalRating = layoutPreferenceDataStore.hideParentalRating.first()
             val modernLandscapePosters = layoutPreferenceDataStore.modernLandscapePostersEnabled.first()
             val modernFullScreenBackdrop = layoutPreferenceDataStore.modernHeroFullScreenBackdropEnabled.first()
             val focusedPosterBackdropExpandEnabled = layoutPreferenceDataStore.focusedPosterBackdropExpandEnabled.first()
@@ -283,6 +285,7 @@ class FolderDetailViewModel @Inject constructor(
                     catalogTypeSuffixEnabled = catalogTypeSuffixEnabled,
                     hideUnreleasedContent = hideUnreleasedContent,
                     showFullReleaseDate = showFullReleaseDate,
+                    hideParentalRating = hideParentalRating,
                     modernLandscapePostersEnabled = modernLandscapePosters,
                     modernHeroFullScreenBackdropEnabled = modernFullScreenBackdrop,
                     focusedPosterBackdropExpandEnabled = focusedPosterBackdropExpandEnabled,
@@ -414,6 +417,7 @@ class FolderDetailViewModel @Inject constructor(
                         posterCardCornerRadiusDp = s.posterCardCornerRadiusDp,
                         hideUnreleasedContent = s.hideUnreleasedContent,
                         showFullReleaseDate = s.showFullReleaseDate,
+                        hideParentalRating = s.hideParentalRating,
                         movieWatchedStatus = s.movieWatchedStatus,
                         heroEnrichmentEnabled = true
                     )
@@ -445,6 +449,7 @@ class FolderDetailViewModel @Inject constructor(
                     posterCardCornerRadiusDp = s.posterCardCornerRadiusDp,
                     hideUnreleasedContent = s.hideUnreleasedContent,
                     showFullReleaseDate = s.showFullReleaseDate,
+                    hideParentalRating = s.hideParentalRating,
                     movieWatchedStatus = s.movieWatchedStatus,
                     heroEnrichmentEnabled = true
                 )
