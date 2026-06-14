@@ -539,6 +539,18 @@ fun LayoutSettingsContent(
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
                     )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_hide_parental_rating),
+                        subtitle = stringResource(R.string.layout_hide_parental_rating_sub),
+                        checked = uiState.hideParentalRating,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHideParentalRating(!uiState.hideParentalRating)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
                 }
             }
 
