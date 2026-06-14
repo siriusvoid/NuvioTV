@@ -104,6 +104,7 @@ fun HeroContentSection(
     hideMetaInfoImdb: Boolean = false,
     tmdbRating: Float? = null,
     showFullReleaseDate: Boolean = true,
+    hideParentalRating: Boolean = false,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
@@ -329,7 +330,8 @@ fun HeroContentSection(
                         meta = meta,
                         hideImdbRating = hideMetaInfoImdb,
                         showFullReleaseDate = showFullReleaseDate,
-                        tmdbRating = tmdbRating
+                        tmdbRating = tmdbRating,
+                        hideParentalRating = hideParentalRating
                     )
                 }
             }
@@ -592,7 +594,8 @@ private fun MetaInfoRow(
     meta: Meta,
     hideImdbRating: Boolean,
     showFullReleaseDate: Boolean = true,
-    tmdbRating: Float? = null
+    tmdbRating: Float? = null,
+    hideParentalRating: Boolean = false
 ) {
     val context = LocalContext.current
     val genresText = remember(meta.genres) {
@@ -620,8 +623,9 @@ private fun MetaInfoRow(
             .data(com.nuvio.tv.R.raw.mdblist_tmdb)
             .build()
     }
-    val ageRatingBadge = remember(meta.ageRating) {
-        meta.ageRating?.trim()?.takeIf { it.isNotBlank() }
+    val ageRatingBadge = remember(meta.ageRating, hideParentalRating) {
+        if (hideParentalRating) null
+        else meta.ageRating?.trim()?.takeIf { it.isNotBlank() }
     }
     val isSeries = meta.type == ContentType.SERIES || meta.type == ContentType.TV
     val strStatusEnded = stringResource(if (isSeries) R.string.series_status_ended else R.string.movie_status_ended)
