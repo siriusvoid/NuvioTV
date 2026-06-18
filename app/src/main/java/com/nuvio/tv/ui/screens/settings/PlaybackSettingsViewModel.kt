@@ -119,6 +119,10 @@ class PlaybackSettingsViewModel @Inject constructor(
         playerSettingsDataStore.setTunnelingEnabled(enabled)
     }
 
+    suspend fun setForceOpticalPassthrough(enabled: Boolean) {
+        playerSettingsDataStore.setForceOpticalPassthrough(enabled)
+    }
+
     suspend fun setSkipSilence(enabled: Boolean) {
         playerSettingsDataStore.setSkipSilence(enabled)
     }
@@ -201,6 +205,10 @@ class PlaybackSettingsViewModel @Inject constructor(
 
     suspend fun setDv7LibdoviModeOverride(mode: Int) {
         playerSettingsDataStore.setDv7LibdoviModeOverride(mode)
+    }
+
+    suspend fun setStripHdr10PlusSei(enabled: Boolean) {
+        playerSettingsDataStore.setStripHdr10PlusSei(enabled)
     }
 
     suspend fun setUseLibass(enabled: Boolean) {

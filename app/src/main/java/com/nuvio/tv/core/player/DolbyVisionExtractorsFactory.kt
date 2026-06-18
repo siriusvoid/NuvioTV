@@ -40,7 +40,9 @@ import java.util.concurrent.atomic.AtomicLong
 @UnstableApi
 internal class DolbyVisionExtractorsFactory(
     private val delegate: ExtractorsFactory,
-    private val config: DolbyVisionConversionConfig
+    private val config: DolbyVisionConversionConfig,
+    private val stripDvRpu: Boolean = false,
+    private val stripHdr10PlusSei: Boolean = false
 ) : ExtractorsFactory {
 
     override fun createExtractors(): Array<Extractor> =
@@ -53,7 +55,7 @@ internal class DolbyVisionExtractorsFactory(
         delegate.createExtractors(uri, responseHeaders).map(::wrap).toTypedArray()
 
     private fun wrap(extractor: Extractor): Extractor {
-        if (!config.active) return extractor
+        if (!config.active && !stripDvRpu && !stripHdr10PlusSei) return extractor
         // Matroska: the DV7 RPU rides in BlockAdditional, which the stock
         // MatroskaExtractor discards before any TrackOutput. Swap it for the
         // vendored extractor that surfaces the RPU through a transformer.
@@ -61,11 +63,15 @@ internal class DolbyVisionExtractorsFactory(
             return DvMatroskaExtractor(
                 DefaultSubtitleParserFactory(),
                 /* flags= */ 0,
-                DolbyVisionMatroskaTransformer(config)
+                DolbyVisionMatroskaTransformer(
+                    config = if (config.active) config else DolbyVisionConversionConfig(active = false),
+                    stripRpuOnly = stripDvRpu && !config.active,
+                    stripHdr10PlusSei = stripHdr10PlusSei,
+                )
             )
         }
         val nalFormat = nalFormatFor(extractor) ?: return extractor
-        return DolbyVisionExtractor(extractor, config, nalFormat)
+        return DolbyVisionExtractor(extractor, config, nalFormat, stripDvRpu, stripHdr10PlusSei)
     }
 
     private fun nalFormatFor(extractor: Extractor): NalFormat? {
@@ -173,11 +179,13 @@ internal data class DolbyVisionConversionConfig(
 private class DolbyVisionExtractor(
     private val delegate: Extractor,
     private val config: DolbyVisionConversionConfig,
-    private val nalFormat: NalFormat
+    private val nalFormat: NalFormat,
+    private val stripDvRpu: Boolean = false,
+    private val stripHdr10PlusSei: Boolean = false
 ) : Extractor {
 
     override fun init(output: ExtractorOutput) {
-        delegate.init(DolbyVisionExtractorOutput(output, config, nalFormat))
+        delegate.init(DolbyVisionExtractorOutput(output, config, nalFormat, stripDvRpu, stripHdr10PlusSei))
     }
 
     @Throws(IOException::class)
@@ -199,13 +207,30 @@ private class DolbyVisionExtractor(
 private class DolbyVisionExtractorOutput(
     private val delegate: ExtractorOutput,
     private val config: DolbyVisionConversionConfig,
-    private val nalFormat: NalFormat
+    private val nalFormat: NalFormat,
+    private val stripDvRpu: Boolean = false,
+    private val stripHdr10PlusSei: Boolean = false
 ) : ExtractorOutput {
 
     override fun track(id: Int, type: Int): TrackOutput {
         val track = delegate.track(id, type)
         return if (type == C.TRACK_TYPE_VIDEO) {
-            DolbyVisionTrackOutput(track, config, nalFormat)
+            when {
+                // Both active: strip DV RPU first, then HDR10+ SEI second.
+                stripDvRpu && stripHdr10PlusSei -> Hdr10StrippingTrackOutput(
+                    Hdr10PlusStrippingTrackOutput(track, nalFormat),
+                    nalFormat
+                )
+                stripDvRpu -> Hdr10StrippingTrackOutput(track, nalFormat)
+                // DolbyVisionTrackOutput wraps Hdr10PlusStrippingTrackOutput so that DV
+                // conversion (if active) always runs first, then HDR10+ SEI is stripped.
+                // When config.active == false DolbyVisionTrackOutput is a pass-through.
+                stripHdr10PlusSei -> DolbyVisionTrackOutput(
+                    Hdr10PlusStrippingTrackOutput(track, nalFormat),
+                    config, nalFormat
+                )
+                else -> DolbyVisionTrackOutput(track, config, nalFormat)
+            }
         } else {
             track
         }
@@ -543,6 +568,272 @@ private class DolbyVisionTrackOutput(
                 data[startCodeOffset + 2].toInt() == 0 &&
                 data[startCodeOffset + 3].toInt() == 1
             ) 4 else 3
+        }
+    }
+}
+
+@UnstableApi
+internal class Hdr10StrippingTrackOutput(
+    private val delegate: TrackOutput,
+    private val nalFormat: NalFormat
+) : TrackOutput {
+
+    private var pendingBuf = ByteArray(0)
+    private var pendingLen = 0
+    private var inputScratch = ByteArray(0)
+    private var nalLengthFieldLength = 4
+    private val scratch = ParsableByteArray()
+
+    private fun ensurePendingCapacity(extra: Int) {
+        val need = pendingLen + extra
+        if (pendingBuf.size < need) {
+            var sz = if (pendingBuf.isEmpty()) 16 * 1024 else pendingBuf.size
+            while (sz < need) sz = sz shl 1
+            pendingBuf = pendingBuf.copyOf(sz)
+        }
+    }
+
+    private fun ensureInputScratch(size: Int) {
+        if (inputScratch.size < size) {
+            var sz = if (inputScratch.isEmpty()) 16 * 1024 else inputScratch.size
+            while (sz < size) sz = sz shl 1
+            inputScratch = ByteArray(sz)
+        }
+    }
+
+    override fun durationUs(durationUs: Long) = delegate.durationUs(durationUs)
+
+    override fun format(format: Format) {
+        nalLengthFieldLength = parseNalLengthFieldLength(format)
+        val strippedCodecs = stripDvCodecString(format.codecs)
+        val outFormat = if (strippedCodecs != null && strippedCodecs != format.codecs) {
+            format.buildUpon()
+                .setCodecs(strippedCodecs)
+                .setSampleMimeType(MimeTypes.VIDEO_H265)
+                .build()
+        } else {
+            format
+        }
+        delegate.format(outFormat)
+    }
+
+    @Throws(java.io.IOException::class)
+    override fun sampleData(
+        input: DataReader,
+        length: Int,
+        allowEndOfInput: Boolean,
+        sampleDataPart: Int
+    ): Int {
+        ensureInputScratch(length)
+        val read = input.read(inputScratch, 0, length)
+        if (read == C.RESULT_END_OF_INPUT) {
+            if (allowEndOfInput) return C.RESULT_END_OF_INPUT
+            throw EOFException()
+        }
+        if (read <= 0) return read
+        if (sampleDataPart == TrackOutput.SAMPLE_DATA_PART_MAIN) {
+            ensurePendingCapacity(read)
+            System.arraycopy(inputScratch, 0, pendingBuf, pendingLen, read)
+            pendingLen += read
+        } else {
+            scratch.reset(inputScratch, read)
+            delegate.sampleData(scratch, read, sampleDataPart)
+        }
+        return read
+    }
+
+    override fun sampleData(data: ParsableByteArray, length: Int, sampleDataPart: Int) {
+        if (sampleDataPart != TrackOutput.SAMPLE_DATA_PART_MAIN || length <= 0) {
+            delegate.sampleData(data, length, sampleDataPart)
+            return
+        }
+        ensurePendingCapacity(length)
+        data.readBytes(pendingBuf, pendingLen, length)
+        pendingLen += length
+    }
+
+    override fun sampleMetadata(
+        timeUs: Long,
+        flags: Int,
+        size: Int,
+        offset: Int,
+        cryptoData: TrackOutput.CryptoData?
+    ) {
+        if (pendingLen == 0) {
+            delegate.sampleMetadata(timeUs, flags, size, offset, cryptoData)
+            return
+        }
+        val carrySize = offset.coerceIn(0, pendingLen)
+        val sampleEnd = pendingLen - carrySize
+
+        val afterRpuStrip = when (nalFormat) {
+            NalFormat.LENGTH_DELIMITED ->
+                HevcDvRpuStripper.stripRpuLengthDelimited(pendingBuf, sampleEnd, nalLengthFieldLength)
+            NalFormat.ANNEX_B ->
+                HevcDvRpuStripper.stripRpuAnnexB(pendingBuf, sampleEnd)
+        }
+        val afterRpuData = afterRpuStrip ?: pendingBuf
+        val afterRpuLen = afterRpuStrip?.size ?: sampleEnd
+
+        scratch.reset(afterRpuData, afterRpuLen)
+        delegate.sampleData(scratch, afterRpuLen)
+        delegate.sampleMetadata(timeUs, flags, afterRpuLen, 0, cryptoData)
+
+        if (carrySize > 0) {
+            System.arraycopy(pendingBuf, sampleEnd, pendingBuf, 0, carrySize)
+        }
+        pendingLen = carrySize
+    }
+
+    internal companion object {
+        /**
+         * Rewrites a DV codec string to plain HEVC so ExoPlayer doesn't open
+         * a Dolby Vision decoder pipeline for the stripped stream.
+         * dvhe.08.xx / dvh1.08.xx → hvc1.2.4.L153.B0
+         */
+        fun stripDvCodecString(codecs: String?): String? {
+            if (codecs.isNullOrBlank()) return null
+            return Regex("(?i)(dvhe|dvh1)\\.[0-9]+\\.[0-9]+")
+                .replace(codecs.trim()) { "hvc1.2.4.L153.B0" }
+                .takeIf { it != codecs }
+        }
+
+        fun parseNalLengthFieldLength(format: Format): Int {
+            val csd = format.initializationData.firstOrNull() ?: return 4
+            if (csd.size <= 21) return 4
+            if (csd[0].toInt() != 1) return 4
+            return (csd[21].toInt() and 0x03) + 1
+        }
+    }
+}
+
+/**
+ * Strips HDR10+ SEI messages from each HEVC video sample while passing all
+ * other content through unchanged. No codec-string or MIME-type change is
+ * needed — the HDR10 base layer remains intact.
+ *
+ * When used together with DV7→8.1 conversion this class is the *inner* delegate
+ * of [DolbyVisionTrackOutput], so conversion always runs first.
+ */
+@UnstableApi
+internal class Hdr10PlusStrippingTrackOutput(
+    private val delegate: TrackOutput,
+    private val nalFormat: NalFormat
+) : TrackOutput {
+
+    private var pendingBuf = ByteArray(0)
+    private var pendingLen = 0
+    private var inputScratch = ByteArray(0)
+    private var nalLengthFieldLength = 4
+    private val scratch = ParsableByteArray()
+
+    private fun ensurePendingCapacity(extra: Int) {
+        val need = pendingLen + extra
+        if (pendingBuf.size < need) {
+            var sz = if (pendingBuf.isEmpty()) 16 * 1024 else pendingBuf.size
+            while (sz < need) sz = sz shl 1
+            pendingBuf = pendingBuf.copyOf(sz)
+        }
+    }
+
+    private fun ensureInputScratch(size: Int) {
+        if (inputScratch.size < size) {
+            var sz = if (inputScratch.isEmpty()) 16 * 1024 else inputScratch.size
+            while (sz < size) sz = sz shl 1
+            inputScratch = ByteArray(sz)
+        }
+    }
+
+    override fun durationUs(durationUs: Long) = delegate.durationUs(durationUs)
+
+    override fun format(format: Format) {
+        nalLengthFieldLength = parseNalLengthFieldLength(format)
+        delegate.format(format) // no codec-string or MIME-type change
+    }
+
+    @Throws(java.io.IOException::class)
+    override fun sampleData(
+        input: DataReader,
+        length: Int,
+        allowEndOfInput: Boolean,
+        sampleDataPart: Int
+    ): Int {
+        ensureInputScratch(length)
+        val read = input.read(inputScratch, 0, length)
+        if (read == C.RESULT_END_OF_INPUT) {
+            if (allowEndOfInput) return C.RESULT_END_OF_INPUT
+            throw EOFException()
+        }
+        if (read <= 0) return read
+        if (sampleDataPart == TrackOutput.SAMPLE_DATA_PART_MAIN) {
+            ensurePendingCapacity(read)
+            System.arraycopy(inputScratch, 0, pendingBuf, pendingLen, read)
+            pendingLen += read
+        } else {
+            scratch.reset(inputScratch, read)
+            delegate.sampleData(scratch, read, sampleDataPart)
+        }
+        return read
+    }
+
+    override fun sampleData(data: ParsableByteArray, length: Int, sampleDataPart: Int) {
+        if (sampleDataPart != TrackOutput.SAMPLE_DATA_PART_MAIN || length <= 0) {
+            delegate.sampleData(data, length, sampleDataPart)
+            return
+        }
+        ensurePendingCapacity(length)
+        data.readBytes(pendingBuf, pendingLen, length)
+        pendingLen += length
+    }
+
+    override fun sampleMetadata(
+        timeUs: Long,
+        flags: Int,
+        size: Int,
+        offset: Int,
+        cryptoData: TrackOutput.CryptoData?
+    ) {
+        if (pendingLen == 0) {
+            delegate.sampleMetadata(timeUs, flags, size, offset, cryptoData)
+            return
+        }
+        val carrySize = offset.coerceIn(0, pendingLen)
+        val sampleEnd = pendingLen - carrySize
+
+        var stripped = when (nalFormat) {
+            NalFormat.LENGTH_DELIMITED ->
+                HevcHdr10PlusStripper.stripHdr10PlusLengthDelimited(
+                    pendingBuf, sampleEnd, nalLengthFieldLength
+                )
+            NalFormat.ANNEX_B ->
+                HevcHdr10PlusStripper.stripHdr10PlusAnnexB(pendingBuf, sampleEnd)
+        }
+
+        // Recovery Fallback: If length-delimited parsing failed because the codec string error
+        // caused incorrect default NAL sizing, fall back to a byte-level Annex-B scan.
+        if (stripped == null && nalFormat == NalFormat.LENGTH_DELIMITED) {
+            stripped = HevcHdr10PlusStripper.stripHdr10PlusAnnexB(pendingBuf, sampleEnd)
+        }
+
+        val outData = stripped ?: pendingBuf
+        val outLen = stripped?.size ?: sampleEnd
+
+        scratch.reset(outData, outLen)
+        delegate.sampleData(scratch, outLen)
+        delegate.sampleMetadata(timeUs, flags, outLen, 0, cryptoData)
+
+        if (carrySize > 0) {
+            System.arraycopy(pendingBuf, sampleEnd, pendingBuf, 0, carrySize)
+        }
+        pendingLen = carrySize
+    }
+
+    internal companion object {
+        fun parseNalLengthFieldLength(format: Format): Int {
+            val csd = format.initializationData.firstOrNull() ?: return 4
+            if (csd.size <= 21) return 4
+            if (csd[0].toInt() != 1) return 4
+            return (csd[21].toInt() and 0x03) + 1
         }
     }
 }
