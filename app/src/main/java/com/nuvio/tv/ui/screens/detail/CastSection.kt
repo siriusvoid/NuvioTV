@@ -63,6 +63,7 @@ fun CastSection(
     modifier: Modifier = Modifier,
     title: String = "Cast",
     leadingCast: List<MetaCastMember> = emptyList(),
+    hideActorNames: Boolean = false,
     upFocusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     sectionFocusRequester: FocusRequester? = null,
@@ -176,6 +177,7 @@ fun CastSection(
                     Box(modifier = Modifier.padding(end = endPadding)) {
                         CastMemberItem(
                             member = member,
+                            hideActorName = hideActorNames,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .then(itemFocusPropertiesModifier),
@@ -229,6 +231,7 @@ fun CastSection(
                 Box(modifier = Modifier.padding(end = standardGap)) {
                     CastMemberItem(
                         member = member,
+                        hideActorName = hideActorNames,
                         modifier = Modifier
                             .focusRequester(focusRequester)
                             .then(itemFocusPropertiesModifier),
@@ -253,6 +256,7 @@ fun CastSection(
 @Composable
 private fun CastMemberItem(
     member: MetaCastMember,
+    hideActorName: Boolean = false,
     modifier: Modifier = Modifier,
     itemWidth: Dp = 150.dp,
     cardSize: Dp = 100.dp,
@@ -268,7 +272,15 @@ private fun CastMemberItem(
     val nameStyle = remember(typography) { typography.labelMedium }
     val characterStyle = remember(typography) { typography.labelSmall }
     val initialsStyle = remember(typography) { typography.titleLarge }
-    val photo = member.photo
+    // Actor/voice-actor headshots are real-person photos: TMDB profile images
+    // (image.tmdb.org) or TVDB person artwork (.../banners/person/...). Character
+    // images come from elsewhere — TVDB role art (.../v4/actor/.../photo/) or anime
+    // CDNs. When hiding actor names, blank only the real-person headshots.
+    val isRealPersonPhoto = member.photo?.let { url ->
+        url.contains("image.tmdb.org", ignoreCase = true) ||
+            url.contains("/person/", ignoreCase = true)
+    } == true
+    val photo = if (hideActorName && isRealPersonPhoto) null else member.photo
     val photoModel = remember(context, photo, cardSizePx) {
         photo?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
@@ -318,7 +330,7 @@ private fun CastMemberItem(
                 if (photoModel != null) {
                     AsyncImage(
                         model = photoModel,
-                        contentDescription = member.name,
+                        contentDescription = if (hideActorName) member.character else member.name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                         placeholder = bgPainter,
@@ -331,7 +343,7 @@ private fun CastMemberItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = member.name.firstOrNull()?.uppercase() ?: "?",
+                            text = (if (hideActorName) member.character else member.name)?.firstOrNull()?.uppercase() ?: "?",
                             style = initialsStyle,
                             color = NuvioTheme.colors.TextPrimary
                         )
@@ -342,28 +354,41 @@ private fun CastMemberItem(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        Text(
-            text = member.name,
-            style = nameStyle,
-            color = NuvioTheme.colors.TextSecondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        val character = member.character
-        if (!character.isNullOrBlank()) {
-            val displayCharacter = when {
-                character.equals("Creator", ignoreCase = true) -> stringResource(R.string.cast_role_creator)
-                character.equals("Director", ignoreCase = true) -> stringResource(R.string.cast_role_director)
-                character.equals("Writer", ignoreCase = true) -> stringResource(R.string.cast_role_writer)
-                else -> character
+        val character = member.character?.takeIf { it.isNotBlank() }
+        val displayCharacter = character?.let {
+            when {
+                it.equals("Creator", ignoreCase = true) -> stringResource(R.string.cast_role_creator)
+                it.equals("Director", ignoreCase = true) -> stringResource(R.string.cast_role_director)
+                it.equals("Writer", ignoreCase = true) -> stringResource(R.string.cast_role_writer)
+                else -> it
             }
-            Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
+        }
+
+        if (!hideActorName) {
+            Text(
+                text = member.name,
+                style = nameStyle,
+                color = NuvioTheme.colors.TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (displayCharacter != null) {
+                Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
+                Text(
+                    text = displayCharacter,
+                    style = characterStyle,
+                    color = NuvioTheme.colors.TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else if (displayCharacter != null) {
+            // Actor name hidden — show the character in the primary slot.
             Text(
                 text = displayCharacter,
-                style = characterStyle,
-                color = NuvioTheme.colors.TextTertiary,
-                maxLines = 1,
+                style = nameStyle,
+                color = NuvioTheme.colors.TextSecondary,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }

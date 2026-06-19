@@ -857,6 +857,8 @@
     <string name="layout_prefer_external_meta_sub">Use metadata from external addon instead of catalog addon.</string>
     <string name="layout_show_full_release_date">Show full release date</string>
     <string name="layout_show_full_release_date_sub">For movies, show full release date instead of year only.</string>
+    <string name="layout_hide_actor_names">Hide actor names &amp; photos</string>
+    <string name="layout_hide_actor_names_sub">Hide cast actor/actress names and their photos. Character names and character art stay visible where possible.</string>
     <string name="layout_section_focused">Focused Poster</string>
     <string name="layout_section_focused_desc">Advanced behavior for focused poster cards.</string>
     <string name="layout_expand_poster">Expand Focused Poster to Backdrop</string>
