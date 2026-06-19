@@ -11,6 +11,7 @@ import com.nuvio.tv.data.mapper.toDomain
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.repository.AddonRepository
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ class AddonRepositoryImpl(
     private val preferences: AddonPreferences,
     private val addonSyncService: AddonSyncService,
     private val authManager: AuthManager,
+    private val localLibraryGateway: LocalLibraryGateway,
     private val context: Context,
     /**
      * The dispatcher backing syncScope, the manifest cache disk IO and installedAddonsFlow.
@@ -66,12 +68,14 @@ class AddonRepositoryImpl(
         preferences: AddonPreferences,
         addonSyncService: AddonSyncService,
         authManager: AuthManager,
+        localLibraryGateway: LocalLibraryGateway,
         @ApplicationContext context: Context
     ) : this(
         api = api,
         preferences = preferences,
         addonSyncService = addonSyncService,
         authManager = authManager,
+        localLibraryGateway = localLibraryGateway,
         context = context,
         dispatcher = Dispatchers.IO,
         clock = System::currentTimeMillis
@@ -293,9 +297,17 @@ class AddonRepositoryImpl(
         }
         .stateIn(syncScope, SharingStarted.Eagerly, emptyList<Addon>())
 
-    override fun getInstalledAddons(): Flow<List<Addon>> = installedAddonsFlow
+    override fun getInstalledAddons(): Flow<List<Addon>> =
+        combine(installedAddonsFlow, localLibraryGateway.synthesizeAddon()) { addons, synthetic ->
+            if (synthetic != null) listOf(synthetic) + addons else addons
+        }
 
     override suspend fun fetchAddon(baseUrl: String): NetworkResult<Addon> {
+        if (localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = baseUrl)) {
+            val synthetic = localLibraryGateway.synthesizeAddon().first()
+                ?: return NetworkResult.Error("Local Library has no enabled sources")
+            return NetworkResult.Success(synthetic)
+        }
         val cleanBaseUrl = canonicalizeUrl(baseUrl)
         val queryStart = cleanBaseUrl.indexOf('?')
         val basePath = if (queryStart >= 0) cleanBaseUrl.substring(0, queryStart).trimEnd('/') else cleanBaseUrl
