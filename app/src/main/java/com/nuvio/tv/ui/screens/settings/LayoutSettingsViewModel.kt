@@ -78,6 +78,7 @@ data class LayoutSettingsUiState(
     val hideUnreleasedContent: Boolean = false,
     val showFullReleaseDate: Boolean = true,
     val hideParentalRating: Boolean = false,
+    val hideActorNames: Boolean = false,
     val nextUpFromFurthestEpisode: Boolean = true,
     val showUnairedNextUp: Boolean = true,
     val continueWatchingEnabled: Boolean = true,
@@ -135,6 +136,7 @@ sealed class LayoutSettingsEvent {
     data class SetHideUnreleasedContent(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetShowFullReleaseDate(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetHideParentalRating(val enabled: Boolean) : LayoutSettingsEvent()
+    data class SetHideActorNames(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetNextUpFromFurthestEpisode(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetShowUnairedNextUp(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetContinueWatchingEnabled(val enabled: Boolean) : LayoutSettingsEvent()
@@ -365,6 +367,11 @@ class LayoutSettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            layoutPreferenceDataStore.hideActorNames.distinctUntilChanged().collectLatest { enabled ->
+                updateUiStateIfChanged { it.copy(hideActorNames = enabled) }
+            }
+        }
+        viewModelScope.launch {
             layoutPreferenceDataStore.nextUpFromFurthestEpisode.collectLatest { enabled ->
                 updateUiStateIfChanged { it.copy(nextUpFromFurthestEpisode = enabled) }
             }
@@ -440,6 +447,7 @@ class LayoutSettingsViewModel @Inject constructor(
             is LayoutSettingsEvent.SetHideUnreleasedContent -> setHideUnreleasedContent(event.enabled)
             is LayoutSettingsEvent.SetShowFullReleaseDate -> setShowFullReleaseDate(event.enabled)
             is LayoutSettingsEvent.SetHideParentalRating -> setHideParentalRating(event.enabled)
+            is LayoutSettingsEvent.SetHideActorNames -> setHideActorNames(event.enabled)
             is LayoutSettingsEvent.SetNextUpFromFurthestEpisode -> setNextUpFromFurthestEpisode(event.enabled)
             is LayoutSettingsEvent.SetShowUnairedNextUp -> setShowUnairedNextUp(event.enabled)
             is LayoutSettingsEvent.SetContinueWatchingEnabled -> setContinueWatchingEnabled(event.enabled)
@@ -788,6 +796,13 @@ class LayoutSettingsViewModel @Inject constructor(
         if (_uiState.value.hideParentalRating == enabled) return
         viewModelScope.launch {
             layoutPreferenceDataStore.setHideParentalRating(enabled)
+        }
+    }
+
+    private fun setHideActorNames(enabled: Boolean) {
+        if (_uiState.value.hideActorNames == enabled) return
+        viewModelScope.launch {
+            layoutPreferenceDataStore.setHideActorNames(enabled)
         }
     }
 
