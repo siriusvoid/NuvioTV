@@ -11,6 +11,7 @@ import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.AddonResource
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.R
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,7 +32,8 @@ import javax.inject.Singleton
 class MetaRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepository
+    private val addonRepository: AddonRepository,
+    private val localLibraryGateway: LocalLibraryGateway
 ) : MetaRepository {
     companion object {
         private const val TAG = "MetaRepository"
@@ -73,6 +75,13 @@ class MetaRepositoryImpl @Inject constructor(
             return@flow
         }
 
+        if (localLibraryGateway.isLocalId(id) || localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = addonBaseUrl)) {
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) metaCache[cacheKey] = result.data
+            emit(result)
+            return@flow
+        }
+
         emit(NetworkResult.Loading)
 
         val url = buildMetaUrl(addonBaseUrl, type, id)
@@ -109,6 +118,16 @@ class MetaRepositoryImpl @Inject constructor(
         val cacheKey = "$type:$id"
         addonMetaCache[cacheKey]?.let { cached ->
             emit(NetworkResult.Success(cached))
+            return@flow
+        }
+
+        if (localLibraryGateway.isLocalId(id)) {
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) {
+                addonMetaCache[cacheKey] = result.data
+                metaCache[cacheKey] = result.data
+            }
+            emit(result)
             return@flow
         }
 
@@ -268,6 +287,16 @@ class MetaRepositoryImpl @Inject constructor(
         val cacheKey = "$type:$id"
         primaryAddonMetaCache[cacheKey]?.let { cached ->
             emit(NetworkResult.Success(cached))
+            return@flow
+        }
+
+        if (localLibraryGateway.isLocalId(id)) {
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) {
+                primaryAddonMetaCache[cacheKey] = result.data
+                metaCache[cacheKey] = result.data
+            }
+            emit(result)
             return@flow
         }
 
