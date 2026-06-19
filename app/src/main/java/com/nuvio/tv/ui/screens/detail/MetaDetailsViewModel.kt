@@ -152,6 +152,7 @@ class MetaDetailsViewModel @Inject constructor(
         observeBlurUnwatchedEpisodes()
         observeShowFullReleaseDate()
         observeHideParentalRating()
+        observeHideActorNames()
         observeHideUnreleasedContent()
         loadMeta()
     }
@@ -571,6 +572,18 @@ class MetaDetailsViewModel @Inject constructor(
                 .collectLatest { enabled ->
                 _uiState.update { state ->
                     if (state.hideParentalRating == enabled) state else state.copy(hideParentalRating = enabled)
+                }
+            }
+        }
+    }
+
+    private fun observeHideActorNames() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideActorNames
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                _uiState.update { state ->
+                    if (state.hideActorNames == enabled) state else state.copy(hideActorNames = enabled)
                 }
             }
         }
