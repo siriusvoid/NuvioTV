@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
@@ -109,6 +110,7 @@ internal enum class SettingsCategory {
     PLAYBACK,
     ADVANCED,
     TRACKING,
+    LOCAL_LIBRARY,
     ABOUT,
     DEBUG
 }
@@ -229,6 +231,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(
+        category = SettingsCategory.LOCAL_LIBRARY,
+        title = "Local sources",
+        icon = Icons.Default.Folder,
+        subtitle = "Media folders on this device",
+        destination = SettingsSectionDestination.External
+    ),
+    SettingsSectionSpec(
         category = SettingsCategory.ABOUT,
         title = stringResource(R.string.about_title),
         icon = Icons.Default.Info,
@@ -261,6 +270,7 @@ fun SettingsScreen(
     onNavigateToManageProfiles: () -> Unit = {},
     onNavigateToSupportersContributors: () -> Unit = {},
     onNavigateToLicensesAttributions: () -> Unit = {},
+    onNavigateToLocalLibrary: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel()
 ) {
@@ -515,6 +525,7 @@ fun SettingsScreen(
                     when (section.category) {
                         SettingsCategory.ACCOUNT -> onNavigateToAuthQrSignIn()
                         SettingsCategory.TRACKING -> onNavigateToTracking()
+                        SettingsCategory.LOCAL_LIBRARY -> onNavigateToLocalLibrary()
                         else -> Unit
                     }
                 } else {
@@ -1037,6 +1048,7 @@ private fun SettingsDetailPane(
         )
         SettingsCategory.DEBUG -> DebugSettingsContent()
         SettingsCategory.TRACKING -> Unit
+        SettingsCategory.LOCAL_LIBRARY -> Unit
     }
 }
 

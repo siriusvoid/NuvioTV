@@ -548,6 +548,9 @@ dependencies {
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
 
+    // Local Library
+    implementation(libs.androidx.documentfile)
+
     // Performance profiling
     implementation("androidx.metrics:metrics-performance:1.0.0-rc01")  // JankStats
     debugImplementation("androidx.compose.runtime:runtime-tracing")

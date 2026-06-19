@@ -10,6 +10,7 @@ import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.AddonResource
 import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.domain.repository.MetaRepository
 import com.nuvio.tv.R
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,7 +34,8 @@ import javax.inject.Singleton
 class MetaRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepository
+    private val addonRepository: AddonRepository,
+    private val localLibraryGateway: LocalLibraryGateway
 ) : MetaRepository {
     companion object {
         private const val TAG = "MetaRepository"
@@ -154,6 +156,19 @@ class MetaRepositoryImpl @Inject constructor(
             }
         }
 
+        // Local-library items resolve through the gateway rather than an addon, so
+        // short-circuit before the addon-type resolution below and key the cache on
+        // the requested type, which the probe above already looks under.
+        if (localLibraryGateway.isLocalId(id) || localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = addonBaseUrl)) {
+            val localCacheKey = addonMetaCacheKey(addonBaseUrl, requestedType, id)
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) {
+                metaCache[localCacheKey] = CachedMeta(result.data, System.currentTimeMillis() + DEFAULT_TTL_MS)
+            }
+            emit(result)
+            return@flow
+        }
+
         // The caller names the addon but not necessarily a type it serves. Nuvio's
         // internal "tv" against a series-only addon is the usual case. Resolve it
         // like the multi-addon path does, so the request and the cached entry line
@@ -246,6 +261,17 @@ class MetaRepositoryImpl @Inject constructor(
                     // Fall through — the in-flight request failed, try ourselves
                 }
             }
+        }
+
+        if (localLibraryGateway.isLocalId(id)) {
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) {
+                val cached = CachedMeta(result.data, System.currentTimeMillis() + DEFAULT_TTL_MS)
+                addonMetaCache[cacheKey] = cached
+                metaCache[cacheKey] = cached
+            }
+            emit(result)
+            return@flow
         }
 
         emit(NetworkResult.Loading)
@@ -487,6 +513,17 @@ class MetaRepositoryImpl @Inject constructor(
                 return@flow
             }
             primaryAddonMetaCache.remove(cacheKey)
+        }
+
+        if (localLibraryGateway.isLocalId(id)) {
+            val result = localLibraryGateway.meta(type, id)
+            if (result is NetworkResult.Success) {
+                val cached = CachedMeta(result.data, System.currentTimeMillis() + DEFAULT_TTL_MS)
+                primaryAddonMetaCache[cacheKey] = cached
+                metaCache[cacheKey] = cached
+            }
+            emit(result)
+            return@flow
         }
 
         emit(NetworkResult.Loading)
