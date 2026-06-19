@@ -354,6 +354,8 @@ class PlayerRuntimeController(
     internal var playerSettingsInitialized: Boolean = false
     internal var skipIntroFetchedKey: String? = null
     internal val autoSkippedIntervalKeys: MutableSet<String> = mutableSetOf()
+    internal var lastAutoSkippedIntervalKey: String? = null
+    internal var lastAutoSkipAttemptMs: Long = 0L
     internal var lastActiveSkipType: String? = null
     internal var autoSubtitleSelected: Boolean = false
     internal var lastSubtitlePreferredLanguage: String? = null

@@ -2,8 +2,31 @@ package com.nuvio.tv.ui.screens.player
 
 import androidx.media3.common.MimeTypes
 import com.nuvio.tv.ui.util.LANGUAGE_OVERRIDES
+import java.util.Locale
 
 internal object PlayerSubtitleUtils {
+    /** Minimal normalized-language result exposing the canonical BCP-47 [tag]. */
+    data class NormalizedLanguage(val tag: String)
+
+    private val ISO_639_1_CODES: Set<String> = Locale.getISOLanguages().toSet()
+
+    /**
+     * Resolves [input] to a recognized language, or null when it does not look
+     * like a language code/name. Wraps [normalizeLanguageCode] and only returns
+     * a value for genuine languages, so arbitrary filename tokens (e.g. release
+     * tags like "WEB" or "PROPER") are not mistaken for a language.
+     */
+    fun normalizeLanguage(input: String): NormalizedLanguage? {
+        val key = input.trim().lowercase().replace('_', '-')
+        if (key.isBlank()) return null
+        val tag = normalizeLanguageCode(input)
+        if (tag.isBlank()) return null
+        val recognized = tag != key ||
+            LANGUAGE_OVERRIDES.containsKey(key) ||
+            key in ISO_639_1_CODES
+        return if (recognized) NormalizedLanguage(tag) else null
+    }
+
     fun normalizeLanguageCode(lang: String): String {
         val code = lang.trim().lowercase()
         if (code.isBlank()) return ""

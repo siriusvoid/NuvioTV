@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
@@ -77,6 +78,7 @@ internal enum class SettingsCategory {
     PLAYBACK,
     ADVANCED,
     TRAKT,
+    LOCAL_LIBRARY,
     ABOUT,
     DEBUG
 }
@@ -178,6 +180,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(
+        category = SettingsCategory.LOCAL_LIBRARY,
+        title = "Local sources",
+        icon = Icons.Default.Folder,
+        subtitle = "Jellyfin, SMB shares, on-device files",
+        destination = SettingsSectionDestination.External
+    ),
+    SettingsSectionSpec(
         category = SettingsCategory.ABOUT,
         title = stringResource(R.string.about_title),
         icon = Icons.Default.Info,
@@ -210,6 +219,7 @@ fun SettingsScreen(
     onNavigateToManageProfiles: () -> Unit = {},
     onNavigateToSupportersContributors: () -> Unit = {},
     onNavigateToLicensesAttributions: () -> Unit = {},
+    onNavigateToLocalLibrary: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel()
 ) {
@@ -382,6 +392,7 @@ fun SettingsScreen(
                                         when (section.category) {
                                             SettingsCategory.ACCOUNT -> onNavigateToAuthQrSignIn()
                                             SettingsCategory.TRAKT -> onNavigateToTrakt()
+                                            SettingsCategory.LOCAL_LIBRARY -> onNavigateToLocalLibrary()
                                             else -> Unit
                                         }
                                     } else {
@@ -537,6 +548,7 @@ fun SettingsScreen(
                         )
                         SettingsCategory.DEBUG -> DebugSettingsContent()
                         SettingsCategory.TRAKT -> Unit
+                        SettingsCategory.LOCAL_LIBRARY -> Unit
                     }
                 }
             }

@@ -11,6 +11,7 @@ import com.nuvio.tv.data.mapper.toDomain
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.repository.AddonRepository
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +39,7 @@ class AddonRepositoryImpl @Inject constructor(
     private val preferences: AddonPreferences,
     private val addonSyncService: AddonSyncService,
     private val authManager: AuthManager,
+    private val localLibraryGateway: LocalLibraryGateway,
     @ApplicationContext private val context: Context
 ) : AddonRepository {
 
@@ -152,8 +154,8 @@ class AddonRepositoryImpl @Inject constructor(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    override fun getInstalledAddons(): Flow<List<Addon>> =
-        combine(
+    override fun getInstalledAddons(): Flow<List<Addon>> {
+        val remote: Flow<List<Addon>> = combine(
             preferences.installedAddonUrls,
             preferences.userSetNames,
             preferences.addonEnabledStates,
@@ -211,8 +213,17 @@ class AddonRepositoryImpl @Inject constructor(
                 }
             }.flowOn(Dispatchers.IO)
         }
+        return combine(remote, localLibraryGateway.synthesizeAddon()) { addons, synthetic ->
+            if (synthetic != null) listOf(synthetic) + addons else addons
+        }
+    }
 
     override suspend fun fetchAddon(baseUrl: String): NetworkResult<Addon> {
+        if (localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = baseUrl)) {
+            val synthetic = localLibraryGateway.synthesizeAddon().first()
+                ?: return NetworkResult.Error("Local Library has no enabled sources")
+            return NetworkResult.Success(synthetic)
+        }
         val cleanBaseUrl = canonicalizeUrl(baseUrl)
         val queryStart = cleanBaseUrl.indexOf('?')
         val basePath = if (queryStart >= 0) cleanBaseUrl.substring(0, queryStart).trimEnd('/') else cleanBaseUrl

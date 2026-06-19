@@ -22,6 +22,8 @@ data class Stream(
     val sources: List<String>? = null,
     val quality: String? = null,
     val qualityValue: Int = -1,
+    /** Sidecar subtitle files bundled with the stream (currently from local library sources). */
+    val externalSubtitles: List<ExternalSubtitle> = emptyList(),
     val clientResolve: StreamClientResolve? = null,
     val debridCacheStatus: StreamDebridCacheStatus? = null,
     val badges: List<StreamBadge> = emptyList()
@@ -253,6 +255,21 @@ data class StreamClientResolveParsed(
 data class ProxyHeaders(
     val request: Map<String, String>?,
     val response: Map<String, String>?
+)
+
+/**
+ * A subtitle track delivered alongside a [Stream] (e.g. sidecar file next to the
+ * media on an SMB share or Jellyfin server). Attached to ExoPlayer as a
+ * `MediaItem.SubtitleConfiguration` at player startup.
+ */
+@Immutable
+data class ExternalSubtitle(
+    val url: String,
+    val displayName: String,
+    val language: String?,
+    val mimeType: String,
+    val isForced: Boolean = false,
+    val headers: Map<String, String> = emptyMap()
 )
 
 /**

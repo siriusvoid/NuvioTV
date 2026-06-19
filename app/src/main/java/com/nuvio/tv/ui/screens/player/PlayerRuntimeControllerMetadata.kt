@@ -380,19 +380,34 @@ internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) 
     if (active != null) {
         if (currentActive == null || active.type != currentActive.type || active.startTime != currentActive.startTime) {
             lastActiveSkipType = active.type
+            // Entering a new/different interval — reset the per-interval retry tracker so a
+            // stale attempt timestamp can't trigger a spurious re-skip after a rewind.
+            lastAutoSkippedIntervalKey = null
             _uiState.update { it.copy(activeSkipInterval = active, skipIntervalDismissed = false) }
         }
         val segmentType = AutoSkipSegmentType.fromSkipIntervalType(active.type)
         val activeKey = active.autoSkipKey()
+        val now = android.os.SystemClock.elapsedRealtime()
+        // autoSkippedIntervalKeys remembers every interval already skipped this episode so we
+        // never re-skip one the user deliberately rewinds into. Retry only while we remain
+        // continuously inside the same interval we just tried to skip — e.g. local files where
+        // the seek fires before the player is seekable, so the first skip is a no-op. A
+        // successful seek leaves the interval (clearing lastAutoSkippedIntervalKey), so this
+        // self-terminates; the cooldown prevents rapid re-seeks.
+        val canRetry = lastAutoSkippedIntervalKey == activeKey && now - lastAutoSkipAttemptMs >= 2_000L
         if (
             segmentType != null &&
             segmentType in autoSkipSegmentTypes &&
-            activeKey !in autoSkippedIntervalKeys
+            (activeKey !in autoSkippedIntervalKeys || canRetry)
         ) {
             autoSkippedIntervalKeys.add(activeKey)
+            lastAutoSkippedIntervalKey = activeKey
+            lastAutoSkipAttemptMs = now
             skipInterval(active)
         }
     } else if (currentActive != null) {
+        // Left the interval (seek succeeded or it played through) — stop retrying it.
+        lastAutoSkippedIntervalKey = null
         _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = false) }
     }
 }

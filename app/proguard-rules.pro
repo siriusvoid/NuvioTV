@@ -125,6 +125,12 @@
 -dontwarn okhttp3.internal.sse.**
 -dontwarn org.jsoup.helper.Re2jRegex
 
+# ── Local Library (SMB via smbj, event bus via mbassador) ─────────────────────
+# Optional JVM-only deps that are absent on Android; safe to ignore.
+-dontwarn javax.el.**
+-dontwarn net.engio.mbassy.dispatch.el.**
+-dontwarn org.ietf.jgss.**
+
 # ── DexClassLoader runtime deps (CloudStream extensions) ─────────────────────
 # Extensions are DEX files loaded at runtime via DexClassLoader. They resolve
 # dependencies by fully-qualified name from the host classloader. R8 must not
