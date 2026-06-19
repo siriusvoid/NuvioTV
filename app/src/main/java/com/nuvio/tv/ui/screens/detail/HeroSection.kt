@@ -81,6 +81,11 @@ import coil3.request.crossfade
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 import java.util.Locale
 
+// Cap the hero synopsis to a fixed number of lines so long addon-provided
+// descriptions don't render as a wall of text (other heroes/cards already clamp).
+// The full description is preserved in the model (translatable); only the view is clamped.
+private const val SYNOPSIS_MAX_LINES = 5
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HeroContentSection(
@@ -319,7 +324,8 @@ fun HeroContentSection(
                             text = meta.description,
                             style = MaterialTheme.typography.bodyMedium,
                             color = NuvioTheme.colors.TextPrimary,
-                            overflow = TextOverflow.Clip,
+                            maxLines = SYNOPSIS_MAX_LINES,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .fillMaxWidth(0.6f)
                                 .padding(bottom = NuvioTheme.spacing.md)
