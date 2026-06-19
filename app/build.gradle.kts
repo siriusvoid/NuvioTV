@@ -136,7 +136,7 @@ android {
         buildConfigField("String", "SPONSOR_NAMES", buildConfigString(sponsorNames))
 
         // In-app updater (GitHub Releases)
-        buildConfigField("String", "GITHUB_OWNER", "\"tapframe\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"siriusvoid\"")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
     }
 
