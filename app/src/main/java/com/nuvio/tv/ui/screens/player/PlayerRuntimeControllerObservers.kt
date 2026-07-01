@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
 import com.nuvio.tv.core.player.OpenSubtitlesHasher
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import com.nuvio.tv.data.local.FrameRateMatchingMode
@@ -242,6 +243,7 @@ internal fun PlayerRuntimeController.observeEpisodeWatchProgress() {
 internal fun PlayerRuntimeController.observeSubtitleSettings() {
     scope.launch {
         playerSettingsDataStore.playerSettings.collect { settings ->
+            currentPlayerSettingsForReport = settings
             val currentState = _uiState.value
             val showOnlyPreferredLanguagesChanged =
                 currentState.subtitleStyle.showOnlyPreferredLanguages != settings.subtitleStyle.showOnlyPreferredLanguages
@@ -285,7 +287,13 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
                     subtitleStyle = settings.subtitleStyle,
                     loadingOverlayEnabled = settings.loadingOverlayEnabled,
                     showPlayerLoadingStatus = settings.showPlayerLoadingStatus,
+                    playbackIssueReportsEnabled = settings.playbackIssueReportsEnabled,
                     showLoadingOverlay = shouldShowOverlay,
+                    loadingIssueReportVisible = if (settings.playbackIssueReportsEnabled) {
+                        state.loadingIssueReportVisible
+                    } else {
+                        false
+                    },
                     pauseOverlayEnabled = settings.pauseOverlayEnabled,
                     osdClockEnabled = settings.osdClockEnabled,
                     internalPlayerEngine = resolvedInternalPlayerEngine,
@@ -429,7 +437,7 @@ internal fun PlayerRuntimeController.observeSubtitleSettings() {
                 if (skipIntervals.isNotEmpty() || _uiState.value.activeSkipInterval != null) {
                     setSkipIntervals(emptyList())
                     skipIntroFetchedKey = null
-                    lastAutoSkippedIntervalKey = null
+                    autoSkippedIntervalKeys.clear()
                     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }
                 }
             } else {
@@ -596,9 +604,27 @@ internal fun PlayerRuntimeController.tryApplyPendingResumeProgress(player: Playe
 
     if (target > 0L) {
         player.seekTo(target)
-        _uiState.update { it.copy(pendingSeekPosition = null) }
-        pendingResumeProgress = null
     }
+    _uiState.update { it.copy(pendingSeekPosition = null) }
+    pendingResumeProgress = null
+}
+
+internal fun PlayerRuntimeController.resolvePendingInitialResumePosition(): Long {
+    val saved = pendingResumeProgress ?: return 0L
+    val target = when {
+        saved.duration > 0L -> saved.resolveResumePosition(saved.duration)
+        saved.position > 0L -> saved.position
+        else -> 0L
+    }
+    if (target <= 0L && saved.progressPercent == null) {
+        clearPendingInitialResumePosition()
+    }
+    return target.coerceAtLeast(0L)
+}
+
+internal fun PlayerRuntimeController.clearPendingInitialResumePosition() {
+    pendingResumeProgress = null
+    _uiState.update { it.copy(pendingSeekPosition = null) }
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -695,10 +721,40 @@ internal fun PlayerRuntimeController.maybeScheduleStallWatchdog() {
             val stalledForMs = nowMs - lastAdvanceAtMs
             if (stalledForMs >= PlayerRuntimeController.STALL_WATCHDOG_THRESHOLD_MS) {
                 val playheadMs = livePlayer.currentPosition.coerceAtLeast(0L)
-                // Seek past buffered edge to force Media3 to cancel the stuck Range request.
-                val durationMs = livePlayer.duration.coerceAtLeast(0L)
-                val seekTargetMs = (bufferedNow + STALL_WATCHDOG_SKIP_PAST_BUFFERED_MS)
-                    .coerceAtMost(durationMs)
+                val durationMs = livePlayer.duration
+                if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
+                    Log.w(
+                        PlayerRuntimeController.TAG,
+                        "STALL_WATCHDOG: bufferedPosition stuck at $bufferedNow for ${stalledForMs}ms " +
+                            "during STATE_BUFFERING (playhead=$playheadMs); skipping self-seek " +
+                            "because duration is unknown"
+                    )
+                    return@launch
+                }
+                if (bufferedNow <= playheadMs) {
+                    Log.w(
+                        PlayerRuntimeController.TAG,
+                        "STALL_WATCHDOG: bufferedPosition stuck at $bufferedNow for ${stalledForMs}ms " +
+                            "during STATE_BUFFERING (playhead=$playheadMs); skipping self-seek " +
+                            "because buffered position is not ahead"
+                    )
+                    return@launch
+                }
+                val targetPastBufferedMs = if (bufferedNow > Long.MAX_VALUE - STALL_WATCHDOG_SKIP_PAST_BUFFERED_MS) {
+                    Long.MAX_VALUE
+                } else {
+                    bufferedNow + STALL_WATCHDOG_SKIP_PAST_BUFFERED_MS
+                }
+                val seekTargetMs = targetPastBufferedMs.coerceAtMost((durationMs - 1L).coerceAtLeast(0L))
+                if (seekTargetMs <= playheadMs || seekTargetMs <= 0L) {
+                    Log.w(
+                        PlayerRuntimeController.TAG,
+                        "STALL_WATCHDOG: bufferedPosition stuck at $bufferedNow for ${stalledForMs}ms " +
+                            "during STATE_BUFFERING (playhead=$playheadMs); skipping self-seek " +
+                            "because target=$seekTargetMs is not forward"
+                    )
+                    return@launch
+                }
                 Log.w(
                     PlayerRuntimeController.TAG,
                     "STALL_WATCHDOG: bufferedPosition stuck at $bufferedNow for ${stalledForMs}ms " +
@@ -715,7 +771,7 @@ internal fun PlayerRuntimeController.maybeScheduleStallWatchdog() {
 internal fun PlayerRuntimeController.maybeScheduleFirstFrameWatchdog() {
     if (hasRenderedFirstFrame || !currentStreamHasVideoTrack) return
     val player = _exoPlayer ?: return
-    if (player.playbackState != Player.STATE_READY || !player.playWhenReady) return
+    if (player.playbackState != Player.STATE_READY) return
     if (firstFrameWatchdogJob?.isActive == true) return
 
     firstFrameWatchdogJob = scope.launch {
@@ -723,11 +779,16 @@ internal fun PlayerRuntimeController.maybeScheduleFirstFrameWatchdog() {
 
         val livePlayer = _exoPlayer ?: return@launch
         if (hasRenderedFirstFrame) return@launch
-        if (livePlayer.playbackState != Player.STATE_READY || !livePlayer.playWhenReady) return@launch
+        if (livePlayer.playbackState != Player.STATE_READY) return@launch
+
+        if (!livePlayer.playWhenReady && !userPausedManually) {
+            livePlayer.playWhenReady = true
+            livePlayer.play()
+            return@launch
+        }
+        if (!livePlayer.playWhenReady) return@launch
 
         val currentPosition = livePlayer.currentPosition
-        // Manual Convert-to-DV8.1 mode 2 produced no first frame (e.g. black
-        // screen): retry the stream at libdovi mode 1 before other fallbacks.
         if (isManualDv81Mode2ActiveForCurrentPlayback &&
             !dv7Mode1ForcedStreamUrls.contains(currentStreamUrl)
         ) {

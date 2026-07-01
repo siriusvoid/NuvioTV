@@ -111,12 +111,6 @@ fun AccountScreen(
                     )
                 }
                 item {
-                    AccountInfoCard(
-                        label = stringResource(R.string.account_sync_backend_label),
-                        value = uiState.syncBackendName
-                    )
-                }
-                item {
                     AccountActionCard(
                         icon = Icons.Default.Person,
                         title = stringResource(R.string.account_signin_create_title),
@@ -164,12 +158,6 @@ fun AccountScreen(
                     AccountInfoCard(
                         label = stringResource(R.string.account_signed_in_as),
                         value = authState.email
-                    )
-                }
-                item {
-                    AccountInfoCard(
-                        label = stringResource(R.string.account_sync_backend_label),
-                        value = uiState.syncBackendName
                     )
                 }
                 item {

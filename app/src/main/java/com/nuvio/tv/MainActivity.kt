@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -117,7 +118,6 @@ import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
 import com.nuvio.tv.core.build.AppFeaturePolicy
-import com.nuvio.tv.core.network.SyncBackendSwitchService
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
@@ -216,9 +216,6 @@ class MainActivity : ComponentActivity() {
     lateinit var startupSyncService: StartupSyncService
 
     @Inject
-    lateinit var syncBackendSwitchService: SyncBackendSwitchService
-
-    @Inject
     lateinit var androidTvChannelSyncService: com.nuvio.tv.core.sync.androidtv.AndroidTvChannelSyncService
 
     @Inject
@@ -290,9 +287,6 @@ class MainActivity : ComponentActivity() {
         externalPlaybackTracker.activityLauncher = externalPlayerLauncher
 
         PluginRuntimeHooks.onActivityCreate(this)
-        lifecycleScope.launch {
-            syncBackendSwitchService.refreshSelection()
-        }
 
         window?.decorView?.post {
             val snapshot = com.nuvio.tv.core.player.DisplayCapabilities.detect(this)
@@ -495,7 +489,7 @@ class MainActivity : ComponentActivity() {
                         !onboardingCompletedThisSession
                     ) {
                         AuthQrSignInScreen(
-                            onBackPress = {},
+                            onBackPress = { finish() },
                             onContinue = {
                                 lifecycleScope.launch {
                                     val shouldRunRemoteOnboardingSync =
@@ -805,9 +799,8 @@ class MainActivity : ComponentActivity() {
                     // of the NavHost) to hide the app cold-starting while the next source resolves.
                     val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
                     autoNextOverlay?.let { ov ->
-                        BackHandler(enabled = true) {
-                            externalPlaybackTracker.dismissAutoNextOverlay()
-                        }
+                        // Back is intercepted at the Activity level (dispatchKeyEvent) so it reliably
+                        // beats the destination screen's BackHandler.
                         com.nuvio.tv.ui.screens.player.LoadingOverlay(
                             visible = true,
                             backdropUrl = ov.backdrop,
@@ -835,9 +828,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
+        startupSyncService.requestForegroundSync()
         lifecycleScope.launch {
-            syncBackendSwitchService.refreshSelection()
-            startupSyncService.requestForegroundSync()
             if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false
                 traktProgressService.invalidateAndRefresh()
@@ -852,6 +844,22 @@ class MainActivity : ComponentActivity() {
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = false
     }
 
+    // Intercept Back at the Activity level, before any Compose BackHandler, so the auto-next loader
+    // can always be dismissed. Compose back-dispatch ordering kept putting the destination screen's
+    // handler above the loader's, so Back never reached it.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK &&
+            externalPlaybackTracker.autoNextOverlay.value != null
+        ) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                Log.d("ExtAutoNext", "dispatchKeyEvent BACK -> dismissAutoNextOverlay (loader showing)")
+                externalPlaybackTracker.dismissAutoNextOverlay()
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onStart() {
         // Returning from an external player: raise the auto-next loader before the player's
         // result is dispatched and before the window repaints, so the transition shows the
@@ -859,10 +867,7 @@ class MainActivity : ComponentActivity() {
         // tracked; onActivityResult keeps it for a completion or dismisses it otherwise.
         externalPlaybackTracker.raiseAutoNextOverlayOnReturn()
         super.onStart()
-        lifecycleScope.launch {
-            syncBackendSwitchService.refreshSelection()
-            profileSettingsSyncService.requestForegroundPull()
-        }
+        profileSettingsSyncService.requestForegroundPull()
         androidTvChannelSyncService.onForegroundChanged(true)
     }
 
@@ -921,6 +926,7 @@ private fun LegacySidebarScaffold(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val showSidebar = currentRoute in rootRoutes
 
     LaunchedEffect(currentRoute) {
@@ -1097,6 +1103,7 @@ private fun LegacySidebarScaffold(
                                     selected = selectedDrawerRoute == item.route,
                                     expanded = isExpanded,
                                     onClick = {
+                                        keyboardController?.hide()
                                         onNavigate(item.route)
                                         navigateToDrawerRoute(
                                             navController = navController,
@@ -1284,6 +1291,7 @@ private fun ModernSidebarScaffold(
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val contentFocusRequester = remember { FocusRequester() }
     val drawerItemFocusRequesters = rememberDrawerItemFocusRequesters(drawerItems)
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
     var isSidebarExpanded by remember { mutableStateOf(false) }
     var sidebarCollapsePending by remember { mutableStateOf(false) }
@@ -1618,6 +1626,7 @@ private fun ModernSidebarScaffold(
                         drawerItemFocusRequesters = drawerItemFocusRequesters,
                         onDrawerItemFocused = { focusedDrawerIndex = it },
                         onDrawerItemClick = { targetRoute ->
+                            keyboardController?.hide()
                             onNavigate(targetRoute)
                             navigateToDrawerRoute(
                                 navController = navController,

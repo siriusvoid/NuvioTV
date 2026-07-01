@@ -365,7 +365,6 @@ internal fun PlayerRuntimeController.setSkipIntervals(list: List<SkipInterval>) 
 
 internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) {
     if (skipIntervals.isEmpty()) {
-        lastAutoSkippedIntervalKey = null
         if (_uiState.value.activeSkipInterval != null) {
             _uiState.update { it.copy(activeSkipInterval = null) }
         }
@@ -394,14 +393,12 @@ internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) 
         if (
             segmentType != null &&
             segmentType in autoSkipSegmentTypes &&
-            lastAutoSkippedIntervalKey != activeKey
+            activeKey !in autoSkippedIntervalKeys
         ) {
-            lastAutoSkippedIntervalKey = activeKey
+            autoSkippedIntervalKeys.add(activeKey)
             skipInterval(active)
         }
     } else if (currentActive != null) {
-
-        lastAutoSkippedIntervalKey = null
         _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = false) }
     }
 }

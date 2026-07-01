@@ -35,7 +35,8 @@ internal data class PlayerNavigationArgs(
     val contentLanguage: String?,
     val externalSubtitlesJson: String?,
     val rememberedAudioLanguage: String?,
-    val rememberedAudioName: String?
+    val rememberedAudioName: String?,
+    val launchStartedAtMs: Long?
 ) {
     val externalSubtitles: List<ExternalSubtitle>
         get() {
@@ -124,7 +125,8 @@ internal data class PlayerNavigationArgs(
                 contentLanguage = decodedOrNull("contentLanguage"),
                 externalSubtitlesJson = decodedOrNull("externalSubtitles"),
                 rememberedAudioLanguage = decodedOrNull("rememberedAudioLanguage"),
-                rememberedAudioName = decodedOrNull("rememberedAudioName")
+                rememberedAudioName = decodedOrNull("rememberedAudioName"),
+                launchStartedAtMs = savedStateHandle.get<String>("launchStartedAtMs")?.toLongOrNull()
             )
         }
     }

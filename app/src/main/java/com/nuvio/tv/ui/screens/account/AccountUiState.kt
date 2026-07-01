@@ -40,7 +40,6 @@ data class AccountUiState(
     val generatedSyncCode: String? = null,
     val syncClaimSuccess: Boolean = false,
     val linkedDevices: List<SupabaseLinkedDevice> = emptyList(),
-    val syncBackendName: String = "Hosted",
     val effectiveOwnerId: String? = null,
     val connectedStats: AccountConnectedStats? = null,
     val syncOverview: SyncOverview? = null,

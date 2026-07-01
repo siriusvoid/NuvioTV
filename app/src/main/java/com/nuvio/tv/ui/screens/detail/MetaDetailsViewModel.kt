@@ -1576,8 +1576,6 @@ class MetaDetailsViewModel @Inject constructor(
         }
 
         val current = watchedSeriesStateHolder.fullyWatchedSeriesIds.value
-        // Include both effectiveContentId and meta.id so badges match
-        // regardless of whether the catalog uses IMDB or TMDB IDs.
         val allIds = buildSet {
             add(contentId)
             meta.id.takeIf { it.isNotBlank() && it != contentId }?.let { add(it) }

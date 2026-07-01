@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.util.Log
+import androidx.media3.exoplayer.SeekParameters
 import com.nuvio.tv.data.local.InternalPlayerEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
@@ -86,6 +87,11 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
 
     val view = mpvView
     if (view == null) {
+        setLoadingStatus(
+            phase = "mpv_waiting_surface",
+            message = context.getString(com.nuvio.tv.R.string.player_loading_building),
+            showOverlay = true
+        )
         _uiState.update {
             it.copy(
                 isBuffering = true,
@@ -98,9 +104,24 @@ internal fun PlayerRuntimeController.initializeMpvPlayer(
     }
 
     runCatching {
+        setLoadingStatus(
+            phase = "mpv_starting",
+            message = context.getString(com.nuvio.tv.R.string.player_loading_starting),
+            showOverlay = true
+        )
         performPendingMpvHardRestartIfNeeded(view)
         view.applyHardwareDecodeMode(mpvHardwareDecodeModeSetting)
-        view.setMedia(url, headers)
+        val initialResumePosition = resolvePendingInitialResumePosition()
+        playbackAnalyticsDiagnostics.setStartupStartPosition(initialResumePosition)
+        view.setMedia(url, headers, initialResumePosition)
+        playbackAnalyticsDiagnostics.recordRawEventLine(
+            "PLAYER_INIT: engine=MPV host=${url.safeMpvTraceHost()} " +
+                "playbackSpeed=${_uiState.value.playbackSpeed} resumePositionMs=$initialResumePosition"
+        )
+        if (initialResumePosition > 0L) {
+            clearPendingInitialResumePosition()
+            updatePlaybackTimeline(currentPosition = initialResumePosition)
+        }
         view.setPlaybackSpeed(_uiState.value.playbackSpeed)
         view.applyAudioAmplificationDb(_uiState.value.audioAmplificationDb)
         view.applyAudioLanguagePreferences(mpvPreferredAudioLanguages)
@@ -162,6 +183,12 @@ internal fun PlayerRuntimeController.releaseMpvPlayer() {
     runCatching { mpvView?.releasePlayer() }
 }
 
+private fun String.safeMpvTraceHost(): String {
+    return runCatching {
+        android.net.Uri.parse(this).host ?: substringBefore("://").takeIf { it.isNotBlank() } ?: "unknown"
+    }.getOrDefault("unknown")
+}
+
 internal fun PlayerRuntimeController.pauseForLifecycle() {
     // Mark we're in background so onPlayerError can defer recovery to onResume.
     isInBackground = true
@@ -186,6 +213,7 @@ internal fun PlayerRuntimeController.pauseForLifecycle() {
         _uiState.update { it.copy(isPlaying = false) }
         return
     }
+    pauseStartTimeMs = System.currentTimeMillis()
     _exoPlayer?.let { player ->
         // Disable automatic audio focus handling so ExoPlayer can't
         // re-acquire focus and set playWhenReady=true behind our back.
@@ -294,7 +322,9 @@ internal fun PlayerRuntimeController.updateMpvAvailableTracks() {
             "mappedInternalSubtitleCount=${internalSubtitleTracks.size}"
     )
 
-    hasScannedTextTracksOnce = true
+    if (internalSubtitleTracks.isNotEmpty() || hasRenderedFirstFrame) {
+        hasScannedTextTracksOnce = true
+    }
     maybeRestorePendingAudioSelectionAfterSubtitleRefresh(audioTracks)
 
     _uiState.update { state ->
@@ -450,7 +480,10 @@ internal fun PlayerRuntimeController.isPlaybackCurrentlyPlaying(): Boolean {
     }
 }
 
-internal fun PlayerRuntimeController.seekPlaybackTo(positionMs: Long) {
+internal fun PlayerRuntimeController.seekPlaybackTo(
+    positionMs: Long,
+    seekParameters: SeekParameters = SeekParameters.CLOSEST_SYNC
+) {
     if (isUsingMpvEngine()) {
         mpvView?.let { view ->
             view.seekToMs(positionMs)
@@ -458,7 +491,33 @@ internal fun PlayerRuntimeController.seekPlaybackTo(positionMs: Long) {
             view.setSubtitleDelayMs(_uiState.value.subtitleDelayMs)
         }
     } else {
-        _exoPlayer?.seekTo(positionMs)
+        _exoPlayer?.let { player ->
+            // When performance mode is active, detect in-buffer seeks and
+            // suppress the buffering spinner for a smoother experience.
+            if (NuvioExoPlayerPerformanceHelper.enabled) {
+                val inBuffer = NuvioExoPlayerPerformanceHelper.isSeekInBuffer(player, positionMs)
+                if (inBuffer) {
+                    suppressBufferingUiForSeek = true
+                    scheduleSeekSuppressTimeout()
+                } else {
+                    seekBufferingUiDeferred = true
+                    seekBufferingUiJob?.cancel()
+                    seekBufferingUiJob = scope.launch {
+                        kotlinx.coroutines.delay(seekBufferingUiDelayMs)
+                        seekBufferingUiDeferred = false
+                        if (player.playbackState == androidx.media3.common.Player.STATE_BUFFERING) {
+                            _uiState.update { it.copy(isBuffering = true) }
+                        }
+                    }
+                }
+                NuvioExoPlayerPerformanceHelper.buildScrubbingParams()?.let { params ->
+                    isScrubbingModeActive = true
+                    player.setScrubbingModeParameters(params)
+                }
+            }
+            player.setSeekParameters(seekParameters)
+            player.seekTo(positionMs)
+        }
     }
 }
 
@@ -509,5 +568,17 @@ internal fun PlayerRuntimeController.keepMpvPlayingIfNeeded(wasPlaying: Boolean)
             _uiState.update { it.copy(isPlaying = true, isBuffering = false) }
             delay(120L)
         }
+    }
+}
+
+/**
+ * After an in-buffer seek, automatically clear the buffering-UI suppression
+ * flag after a short timeout so normal buffering states resume if the seek
+ * takes longer than expected.
+ */
+internal fun PlayerRuntimeController.scheduleSeekSuppressTimeout() {
+    scope.launch {
+        delay(NuvioExoPlayerPerformanceHelper.SEEK_SUPPRESS_TIMEOUT_MS)
+        suppressBufferingUiForSeek = false
     }
 }
