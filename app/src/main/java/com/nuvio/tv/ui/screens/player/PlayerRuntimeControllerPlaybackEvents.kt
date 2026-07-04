@@ -59,7 +59,15 @@ internal fun PlayerRuntimeController.skipInterval(interval: SkipInterval): Boole
     } else {
         (interval.endTime * 1000).toLong()
     }
-    seekPlaybackTo(seekMs.coerceAtMost(duration), SeekParameters.NEXT_SYNC)
+    val target = seekMs.coerceAtMost(duration)
+    val mpvReadyNow = mpvView?.let { view ->
+        currentPlaybackDurationMs() > 0L || view.currentPositionMs() > 0L || hasRenderedFirstFrame
+    } ?: false
+    if (isUsingMpvEngine() && !mpvReadyNow) {
+        _uiState.update { it.copy(pendingSeekPosition = target) }
+    } else {
+        seekPlaybackTo(target, SeekParameters.NEXT_SYNC)
+    }
     scheduleProgressSyncAfterSeek()
     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }
     return true
