@@ -81,6 +81,12 @@ data class TrackingMediaReference(
 fun parseTrackingExternalIds(rawValue: String?): TrackingExternalIds {
     if (rawValue.isNullOrBlank()) return TrackingExternalIds()
     val full = rawValue.trim()
+    // Local Library ids ("nuvio-local:<type>:<tmdbId>") carry the TMDB id the item
+    // was matched to, so trackers can scrobble on-device files.
+    if (full.startsWith("nuvio-local:")) {
+        val tmdbId = full.removePrefix("nuvio-local:").split(":").getOrNull(1)?.toLongOrNull()
+        return if (tmdbId != null) TrackingExternalIds(tmdb = tmdbId) else TrackingExternalIds()
+    }
     if (full.startsWith("tt", ignoreCase = true)) {
         return TrackingExternalIds(imdb = full.substringBefore(':'))
     }
