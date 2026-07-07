@@ -14,6 +14,11 @@ internal fun parseContentIds(contentId: String?): ParsedContentIds {
     if (contentId.isNullOrBlank()) return ParsedContentIds()
     val raw = contentId.trim()
 
+    if (raw.startsWith("nuvio-local:")) {
+        val tmdbId = raw.removePrefix("nuvio-local:").split(":").getOrNull(1)?.toIntOrNull()
+        return if (tmdbId != null) ParsedContentIds(tmdb = tmdbId) else ParsedContentIds()
+    }
+
     if (raw.startsWith("tt")) {
         return ParsedContentIds(imdb = raw.substringBefore(':'))
     }
