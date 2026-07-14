@@ -83,6 +83,13 @@ interface ArmApi {
         @Query("include") include: String = "myanimelist,anilist,kitsu"
     ): Response<List<ArmEntry>>
 
+    // One ArmEntry per season for a TMDB id, so local items need no IMDB hop or TMDB key.
+    @GET("themoviedb")
+    suspend fun resolveTmdbToAll(
+        @Query("id") tmdbId: Int,
+        @Query("include") include: String = "myanimelist,anilist,kitsu,imdb"
+    ): Response<List<ArmEntry>>
+
     // /ids?source=myanimelist&id=...&include=anilist  → single ArmEntry
     @GET("ids")
     suspend fun resolveMalToAnilist(
@@ -129,7 +136,8 @@ data class ArmEntry(
     @Json(name = "myanimelist") val myanimelist: Int? = null,
     @Json(name = "anilist") val anilist: Int? = null,
     @Json(name = "kitsu") val kitsu: Int? = null,
-    @Json(name = "imdb") val imdb: String? = null
+    @Json(name = "imdb") val imdb: String? = null,
+    @Json(name = "themoviedb-season") val themoviedbSeason: Int? = null
 )
 
 // --- Anime-Skip API (GraphQL) ---

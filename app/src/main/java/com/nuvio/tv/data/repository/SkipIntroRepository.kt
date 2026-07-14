@@ -34,6 +34,7 @@ class SkipIntroRepository @Inject constructor(
 ) {
     private val cache = ConcurrentHashMap<String, List<SkipInterval>>()
     private val imdbEntriesCache = ConcurrentHashMap<String, List<ArmEntry>>()
+    private val tmdbEntriesCache = ConcurrentHashMap<Int, List<ArmEntry>>()
     private val animeSkipShowIdCache = ConcurrentHashMap<String, String>()
     private val introDbConfigured = BuildConfig.INTRODB_API_URL.isNotEmpty()
 
@@ -50,6 +51,37 @@ class SkipIntroRepository @Inject constructor(
         val animeSkipDeferred = async { fetchAnimeSkipForEntries(entries, season, episode) }
         val malId = entries.getOrNull(season - 1)?.myanimelist?.toString()
             ?: entries.firstOrNull()?.myanimelist?.toString()
+        val aniSkipDeferred = async {
+            if (malId != null) fetchFromAniSkip(malId, episode) else emptyList()
+        }
+
+        return@coroutineScope mergeByPriority(
+            introDbDeferred.await(),
+            animeSkipDeferred.await(),
+            aniSkipDeferred.await()
+        ).also { cache[cacheKey] = it }
+    }
+
+    /**
+     * Skip intervals for a local item, which carries only a TMDB id: ARM's `/themoviedb` gives the
+     * IMDB/MAL/AniList ids per season, with no TMDB API key involved.
+     */
+    suspend fun getSkipIntervalsForTmdb(tmdbId: Int, season: Int, episode: Int): List<SkipInterval> = coroutineScope {
+        val cacheKey = "tmdb:$tmdbId:$season:$episode"
+        cache[cacheKey]?.let { return@coroutineScope it }
+
+        val entries = resolveTmdbEntries(tmdbId)
+        val entry = entries.firstOrNull { it.themoviedbSeason == season } ?: entries.getOrNull(season - 1)
+        val imdbId = entry?.imdb
+        val malId = entry?.myanimelist?.toString()
+        val anilistId = entry?.anilist?.toString()
+
+        val introDbDeferred = async {
+            if (introDbConfigured && imdbId != null) fetchFromIntroDb(imdbId, season, episode) else emptyList()
+        }
+        val animeSkipDeferred = async {
+            if (anilistId != null) fetchFromAnimeSkip(anilistId, episode, season = null) else emptyList()
+        }
         val aniSkipDeferred = async {
             if (malId != null) fetchFromAniSkip(malId, episode) else emptyList()
         }
@@ -304,6 +336,13 @@ class SkipIntroRepository @Inject constructor(
         return try {
             armApi.resolveImdbToAll(imdbId).takeIf { it.isSuccessful }?.body() ?: emptyList()
         } catch (e: Exception) { emptyList() }.also { imdbEntriesCache[imdbId] = it }
+    }
+
+    private suspend fun resolveTmdbEntries(tmdbId: Int): List<ArmEntry> {
+        tmdbEntriesCache[tmdbId]?.let { return it }
+        return try {
+            armApi.resolveTmdbToAll(tmdbId).takeIf { it.isSuccessful }?.body() ?: emptyList()
+        } catch (e: Exception) { emptyList() }.also { tmdbEntriesCache[tmdbId] = it }
     }
 
     companion object {

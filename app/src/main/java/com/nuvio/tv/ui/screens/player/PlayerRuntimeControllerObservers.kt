@@ -553,7 +553,7 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         return
     }
 
-    // Local ids carry the TMDB id; resolve it to IMDB so skip-segment providers work on-device.
+    // Local ids carry only the TMDB id; ARM resolves the skip-provider ids from it.
     if (effectiveId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX)) {
         if (season == null || episode == null) return
         val tmdbId = effectiveId.removePrefix(LocalLibraryGateway.LOCAL_ID_PREFIX)
@@ -562,13 +562,10 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
         if (skipIntroFetchedKey == key) return
         skipIntroFetchedKey = key
         scope.launch {
-            val resolvedImdb = withTimeoutOrNull(10_000L) { tmdbService.tmdbToImdb(tmdbId, "tv") }
             setSkipIntervals(
-                if (resolvedImdb != null) {
-                    withTimeoutOrNull(15_000L) {
-                        skipIntroRepository.getSkipIntervals(resolvedImdb, season, episode)
-                    } ?: emptyList()
-                } else emptyList()
+                withTimeoutOrNull(15_000L) {
+                    skipIntroRepository.getSkipIntervalsForTmdb(tmdbId, season, episode)
+                } ?: emptyList()
             )
         }
         return
