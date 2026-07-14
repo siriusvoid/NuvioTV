@@ -1066,6 +1066,7 @@ fun ModernHomeContent(
                 portraitMode = !useLandscapePosters,
                 showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                 hideParentalRating = uiState.hideParentalRating,
+                hideGenres = uiState.hideGenres,
                 trailerPlaying = {
                     if (isRapidHorizontalNav.value) false
                     else {

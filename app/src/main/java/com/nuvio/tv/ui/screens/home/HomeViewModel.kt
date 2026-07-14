@@ -515,6 +515,13 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(hideParentalRating = enabled) }
                 }
         }
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideGenres
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    _uiState.update { it.copy(hideGenres = enabled) }
+                }
+        }
         // When "next up from furthest episode" changes, clear CW caches and retrigger pipeline
         viewModelScope.launch {
             var initial = true

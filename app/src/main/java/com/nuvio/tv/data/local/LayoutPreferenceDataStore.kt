@@ -118,6 +118,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val hideUnreleasedContentKey = booleanPreferencesKey("hide_unreleased_content")
     private val showFullReleaseDateKey = booleanPreferencesKey("show_full_release_date")
     private val hideParentalRatingKey = booleanPreferencesKey("hide_parental_rating")
+    private val hideGenresKey = booleanPreferencesKey("hide_genres")
     private val hideActorNamesKey = booleanPreferencesKey("hide_actor_names")
     private val memoryOnlyVerticalScrollKey = booleanPreferencesKey("memory_only_vertical_scroll")
     private val smoothBringIntoViewEnabledKey = booleanPreferencesKey("smooth_bring_into_view_enabled")
@@ -399,6 +400,10 @@ class LayoutPreferenceDataStore @Inject constructor(
 
     val hideParentalRating: Flow<Boolean> = profileFlow { prefs ->
         prefs[hideParentalRatingKey] ?: false
+    }
+
+    val hideGenres: Flow<Boolean> = profileFlow { prefs ->
+        prefs[hideGenresKey] ?: false
     }
 
     val hideActorNames: Flow<Boolean> = profileFlow { prefs ->
@@ -788,6 +793,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     suspend fun setHideParentalRating(enabled: Boolean) {
         store().edit { prefs ->
             prefs[hideParentalRatingKey] = enabled
+        }
+    }
+
+    suspend fun setHideGenres(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[hideGenresKey] = enabled
         }
     }
 

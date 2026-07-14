@@ -62,6 +62,7 @@ data class HomeUiState(
     val hideUnreleasedContent: Boolean = false,
     val showFullReleaseDate: Boolean = true,
     val hideParentalRating: Boolean = false,
+    val hideGenres: Boolean = false,
     val blurUnwatchedEpisodes: Boolean = false,
     val useEpisodeThumbnailsInCw: Boolean = true,
     val continueWatchingEnabled: Boolean = true,

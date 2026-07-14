@@ -105,6 +105,7 @@ fun HeroContentSection(
     tmdbRating: Float? = null,
     showFullReleaseDate: Boolean = true,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
@@ -331,7 +332,8 @@ fun HeroContentSection(
                         hideImdbRating = hideMetaInfoImdb,
                         showFullReleaseDate = showFullReleaseDate,
                         tmdbRating = tmdbRating,
-                        hideParentalRating = hideParentalRating
+                        hideParentalRating = hideParentalRating,
+                        hideGenres = hideGenres
                     )
                 }
             }
@@ -595,7 +597,8 @@ private fun MetaInfoRow(
     hideImdbRating: Boolean,
     showFullReleaseDate: Boolean = true,
     tmdbRating: Float? = null,
-    hideParentalRating: Boolean = false
+    hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false
 ) {
     val context = LocalContext.current
     val genresText = remember(meta.genres) {
@@ -667,7 +670,7 @@ private fun MetaInfoRow(
             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (meta.genres.isNotEmpty()) {
+            if (!hideGenres && meta.genres.isNotEmpty()) {
                 Text(
                     text = genresText,
                     modifier = Modifier.weight(1f, fill = false),

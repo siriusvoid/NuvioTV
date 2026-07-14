@@ -67,6 +67,7 @@ data class MetaDetailsUiState(
     val detailImdbRatingsVisibility: DetailImdbRatingsVisibility = DetailImdbRatingsVisibility.SHOW_ALL,
     val showFullReleaseDate: Boolean = true,
     val hideParentalRating: Boolean = false,
+    val hideGenres: Boolean = false,
     val hideActorNames: Boolean = false,
     val moreLikeThis: List<MetaPreview> = emptyList(),
     val moreLikeThisSource: MoreLikeThisSource? = null,
