@@ -300,6 +300,7 @@ internal fun HeroTitleBlock(
     portraitMode: Boolean,
     showImdbRatings: Boolean,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     trailerPlaying: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
@@ -330,7 +331,8 @@ internal fun HeroTitleBlock(
             portraitMode = portraitMode,
             showImdbRatings = showImdbRatings,
             trailerPlaying = trailerPlaying,
-            hideParentalRating = hideParentalRating
+            hideParentalRating = hideParentalRating,
+            hideGenres = hideGenres
         )
     }
 }
@@ -341,7 +343,8 @@ private fun HeroTitleContent(
     portraitMode: Boolean,
     showImdbRatings: Boolean,
     trailerPlaying: () -> Boolean = { false },
-    hideParentalRating: Boolean = false
+    hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false
 ) {
     val preview = previewProvider() ?: return
     val highlighterEnabled = LocalRecompositionHighlighterEnabled.current
@@ -474,11 +477,13 @@ private fun HeroTitleContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(metaSpacing)
         ) {
-            val leadingMetaText = remember(preview.contentTypeText, preview.genres, context) {
+            val leadingMetaText = remember(preview.contentTypeText, preview.genres, hideGenres, context) {
                 buildList {
                     preview.contentTypeText?.takeIf { it.isNotBlank() }?.let(::add)
-                    preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
-                        add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                    if (!hideGenres) {
+                        preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
+                            add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                        }
                     }
                 }.joinToString(separator = " • ")
             }
