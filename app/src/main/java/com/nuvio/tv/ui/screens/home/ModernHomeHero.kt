@@ -287,6 +287,7 @@ internal fun HeroTitleBlock(
     enrichmentActive: () -> Boolean = { false },
     portraitMode: Boolean,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     trailerPlaying: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
@@ -316,6 +317,7 @@ internal fun HeroTitleBlock(
             previewProvider = { displayPreview },
             portraitMode = portraitMode,
             hideParentalRating = hideParentalRating,
+            hideGenres = hideGenres,
             trailerPlaying = trailerPlaying
         )
     }
@@ -326,6 +328,7 @@ private fun HeroTitleContent(
     previewProvider: () -> HeroPreview?,
     portraitMode: Boolean,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     trailerPlaying: () -> Boolean = { false }
 ) {
     val preview = previewProvider() ?: return
@@ -454,11 +457,13 @@ private fun HeroTitleContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(metaSpacing)
         ) {
-            val leadingMetaText = remember(preview.contentTypeText, preview.genres, context) {
+            val leadingMetaText = remember(preview.contentTypeText, preview.genres, hideGenres, context) {
                 buildList {
                     preview.contentTypeText?.takeIf { it.isNotBlank() }?.let(::add)
-                    preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
-                        add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                    if (!hideGenres) {
+                        preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
+                            add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                        }
                     }
                 }.joinToString(separator = " • ")
             }

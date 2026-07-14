@@ -105,6 +105,7 @@ fun HeroContentSection(
     tmdbRating: Float? = null,
     showFullReleaseDate: Boolean = true,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
@@ -390,6 +391,7 @@ fun HeroContentSection(
                         hideImdbRating = hideMetaInfoImdb,
                         showFullReleaseDate = showFullReleaseDate,
                         hideParentalRating = hideParentalRating,
+                        hideGenres = hideGenres,
                         tmdbRating = tmdbRating
                     )
                 }
@@ -642,6 +644,7 @@ private fun MetaInfoRow(
     hideImdbRating: Boolean,
     showFullReleaseDate: Boolean = true,
     hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     tmdbRating: Float? = null
 ) {
     val context = LocalContext.current
@@ -709,7 +712,7 @@ private fun MetaInfoRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Show all genres
-            if (meta.genres.isNotEmpty()) {
+            if (!hideGenres && meta.genres.isNotEmpty()) {
                 Text(
                     text = genresText,
                     style = MaterialTheme.typography.labelLarge,
