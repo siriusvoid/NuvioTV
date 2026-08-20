@@ -300,6 +300,8 @@ internal fun HeroTitleBlock(
     enrichmentActive: () -> Boolean = { false },
     portraitMode: Boolean,
     showImdbRatings: Boolean,
+    hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false,
     trailerPlaying: () -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
@@ -329,7 +331,9 @@ internal fun HeroTitleBlock(
             previewProvider = { displayPreview },
             portraitMode = portraitMode,
             showImdbRatings = showImdbRatings,
-            trailerPlaying = trailerPlaying
+            trailerPlaying = trailerPlaying,
+            hideParentalRating = hideParentalRating,
+            hideGenres = hideGenres
         )
     }
 }
@@ -339,7 +343,9 @@ private fun HeroTitleContent(
     previewProvider: () -> HeroPreview?,
     portraitMode: Boolean,
     showImdbRatings: Boolean,
-    trailerPlaying: () -> Boolean = { false }
+    trailerPlaying: () -> Boolean = { false },
+    hideParentalRating: Boolean = false,
+    hideGenres: Boolean = false
 ) {
     val preview = previewProvider() ?: return
     val highlighterEnabled = LocalRecompositionHighlighterEnabled.current
@@ -427,11 +433,13 @@ private fun HeroTitleContent(
             preview.secondaryHighlightText,
             preview.ageRatingText,
             preview.statusText,
-            preview.languageText
+            preview.languageText,
+            hideParentalRating
         ) {
             ModernHeroSecondaryMeta(
                 highlightText = preview.secondaryHighlightText?.trim()?.takeIf { it.isNotBlank() },
-                ageRating = preview.ageRatingText?.trim()?.takeIf { it.isNotBlank() },
+                ageRating = if (hideParentalRating) null
+                    else preview.ageRatingText?.trim()?.takeIf { it.isNotBlank() },
                 status = when (preview.statusText?.trim()?.lowercase()) {
                     "ended" -> strStatusEnded.uppercase()
                     "continuing", "returning series" -> strStatusContinuing.uppercase()
@@ -470,11 +478,13 @@ private fun HeroTitleContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(metaSpacing)
         ) {
-            val leadingMetaText = remember(preview.contentTypeText, preview.genres, context) {
+            val leadingMetaText = remember(preview.contentTypeText, preview.genres, hideGenres, context) {
                 buildList {
                     preview.contentTypeText?.takeIf { it.isNotBlank() }?.let(::add)
-                    preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
-                        add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                    if (!hideGenres) {
+                        preview.genres.firstOrNull()?.takeIf { it.isNotBlank() }?.let { genre ->
+                            add(com.nuvio.tv.ui.util.localizedGenreLabel(context, genre))
+                        }
                     }
                 }.joinToString(separator = " • ")
             }

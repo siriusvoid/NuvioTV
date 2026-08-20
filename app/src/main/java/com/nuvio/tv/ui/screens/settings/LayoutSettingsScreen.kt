@@ -617,6 +617,54 @@ fun LayoutSettingsContent(
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
                     )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_hide_parental_rating),
+                        subtitle = stringResource(R.string.layout_hide_parental_rating_sub),
+                        checked = uiState.hideParentalRating,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHideParentalRating(!uiState.hideParentalRating)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_hide_genres),
+                        subtitle = stringResource(R.string.layout_hide_genres_sub),
+                        checked = uiState.hideGenres,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHideGenres(!uiState.hideGenres)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_hide_extra_metadata),
+                        subtitle = stringResource(R.string.layout_hide_extra_metadata_sub),
+                        checked = uiState.hideExtraMetadata,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHideExtraMetadata(!uiState.hideExtraMetadata)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_hide_actor_names),
+                        subtitle = stringResource(R.string.layout_hide_actor_names_sub),
+                        checked = uiState.hideActorNames,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHideActorNames(!uiState.hideActorNames)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
                 }
             }
 

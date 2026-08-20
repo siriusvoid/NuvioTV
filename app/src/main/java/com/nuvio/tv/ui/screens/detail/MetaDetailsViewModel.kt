@@ -166,6 +166,10 @@ class MetaDetailsViewModel @Inject constructor(
                 .collect { _posterCardCornerRadiusDp.value = it }
         }
         observeShowFullReleaseDate()
+        observeHideParentalRating()
+        observeHideGenres()
+        observeHideExtraMetadata()
+        observeHideActorNames()
         observeHideUnreleasedContent()
         loadMeta()
     }
@@ -671,6 +675,54 @@ class MetaDetailsViewModel @Inject constructor(
                 .collectLatest { enabled ->
                 _uiState.update { state ->
                     if (state.showFullReleaseDate == enabled) state else state.copy(showFullReleaseDate = enabled)
+                }
+            }
+        }
+    }
+
+    private fun observeHideParentalRating() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideParentalRating
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                _uiState.update { state ->
+                    if (state.hideParentalRating == enabled) state else state.copy(hideParentalRating = enabled)
+                }
+            }
+        }
+    }
+
+    private fun observeHideGenres() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideGenres
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                _uiState.update { state ->
+                    if (state.hideGenres == enabled) state else state.copy(hideGenres = enabled)
+                }
+            }
+        }
+    }
+
+    private fun observeHideExtraMetadata() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideExtraMetadata
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                _uiState.update { state ->
+                    if (state.hideExtraMetadata == enabled) state else state.copy(hideExtraMetadata = enabled)
+                }
+            }
+        }
+    }
+
+    private fun observeHideActorNames() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.hideActorNames
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                _uiState.update { state ->
+                    if (state.hideActorNames == enabled) state else state.copy(hideActorNames = enabled)
                 }
             }
         }

@@ -678,6 +678,14 @@
     <string name="layout_prefer_external_meta_sub">Использовать метаданные из внешнего аддона вместо аддона каталога.</string>
     <string name="layout_show_full_release_date">Показывать полную дату выхода</string>
     <string name="layout_show_full_release_date_sub">Для фильмов показывать полную дату выхода, а не только год.</string>
+    <string name="layout_hide_parental_rating">Скрыть возрастной рейтинг</string>
+    <string name="layout_hide_parental_rating_sub">Скрыть значок возрастного рейтинга в главном блоке и на странице описания.</string>
+    <string name="layout_hide_genres">Скрыть жанры</string>
+    <string name="layout_hide_genres_sub">Скрыть жанры в главном блоке и на странице описания.</string>
+    <string name="layout_hide_extra_metadata">Скрыть дополнительные метаданные</string>
+    <string name="layout_hide_extra_metadata_sub">Скрыть год, страну, длительность, язык и статус на странице описания.</string>
+    <string name="layout_hide_actor_names">Скрыть имена и фото актёров</string>
+    <string name="layout_hide_actor_names_sub">Скрыть имена и фото актёров в строке актёрского состава; долгое нажатие на фото скрывает или показывает его.</string>
     <string name="layout_section_focused">Постер в фокусе</string>
     <string name="layout_section_focused_desc">Продвинутое поведение для карточек постеров в фокусе.</string>
     <string name="layout_expand_poster">Разворачивать постер в фокусе в фон</string>

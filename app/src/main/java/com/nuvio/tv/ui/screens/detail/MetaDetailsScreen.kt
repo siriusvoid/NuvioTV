@@ -693,6 +693,10 @@ fun MetaDetailsScreen(
                     showFullReleaseDate = uiState.showFullReleaseDate,
                     overallRatingsVisibility = uiState.overallRatingsVisibility,
                     detailImdbRatingsVisibility = uiState.detailImdbRatingsVisibility,
+                    hideParentalRating = uiState.hideParentalRating,
+                    hideGenres = uiState.hideGenres,
+                    hideExtraMetadata = uiState.hideExtraMetadata,
+                    hideActorNames = uiState.hideActorNames,
                     isMovieWatched = uiState.isMovieWatched,
                     isMovieWatchedPending = uiState.isMovieWatchedPending,
                     moreLikeThis = uiState.moreLikeThis,
@@ -1012,6 +1016,10 @@ private fun MetaDetailsContent(
     showFullReleaseDate: Boolean,
     overallRatingsVisibility: HomeImdbRatingsVisibility,
     detailImdbRatingsVisibility: DetailImdbRatingsVisibility,
+    hideParentalRating: Boolean,
+    hideGenres: Boolean,
+    hideExtraMetadata: Boolean,
+    hideActorNames: Boolean,
     isMovieWatched: Boolean,
     isMovieWatchedPending: Boolean,
     moreLikeThis: List<MetaPreview>,
@@ -1376,10 +1384,11 @@ private fun MetaDetailsContent(
             meta.type == ContentType.TV ||
             meta.apiType in listOf("series", "tv")
     }
-    val hasCastSection = directorWriterMembers.isNotEmpty() || normalCastMembers.isNotEmpty()
+    // Fork: director/writer entries are hidden; only real cast keeps the section alive.
+    val hasCastSection = normalCastMembers.isNotEmpty()
     val hasMoreLikeThisSection = moreLikeThis.isNotEmpty()
-    val hasTrailerSection = remember(meta.trailers) { meta.trailers.any { !it.ytId.isNullOrBlank() } }
-    val showEpisodeImdbRatings = detailImdbRatingsVisibility.showEpisodeRatings
+    // Fork: Trailers section is hidden on the detail page.
+    val hasTrailerSection = false
     val visibleEpisodeImdbRatings = remember(
         episodeImdbRatings,
         detailImdbRatingsVisibility,
@@ -1395,7 +1404,8 @@ private fun MetaDetailsContent(
     val showStandardOverallRatings = overallRatingsVisibility
         .showStandardDetailRatings(isMdbListRatingsActive)
     val visibleMdbListRatings = mdbListRatings.takeIf { isMdbListRatingsActive }
-    val hasRatingsSection = isTvShow && showEpisodeImdbRatings
+    // Fork: Ratings section is hidden on the detail page.
+    val hasRatingsSection = false
     val strTabCast = stringResource(R.string.detail_tab_cast)
     val strTabRatings = stringResource(R.string.detail_tab_ratings)
     val strTabMoreLikeThis = stringResource(R.string.detail_tab_more_like_this)
@@ -1841,6 +1851,9 @@ private fun MetaDetailsContent(
                         hideMetaInfoImdb = !showStandardOverallRatings,
                         tmdbRating = tmdbRating.takeIf { showStandardOverallRatings },
                         showFullReleaseDate = showFullReleaseDate,
+                        hideParentalRating = hideParentalRating,
+                        hideGenres = hideGenres,
+                        hideExtraMetadata = hideExtraMetadata,
                         trailerAvailable = trailerButtonEnabled && !trailerUrl.isNullOrBlank(),
                         onTrailerClick = onTrailerButtonClick,
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
@@ -1991,7 +2004,7 @@ private fun MetaDetailsContent(
                                 CastSection(
                                     cast = normalCastMembers,
                                     title = if (hasVisiblePeopleTabs) "" else strTabCast,
-                                    leadingCast = directorWriterMembers,
+                                    hideActorNames = hideActorNames,
                                     upFocusRequester = if (hasVisiblePeopleTabs) castTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
                                     downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
                                     sectionFocusRequester = castSectionFocusRequester,
