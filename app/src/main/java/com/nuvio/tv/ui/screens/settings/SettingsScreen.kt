@@ -208,7 +208,7 @@ private fun rememberSettingsSectionSpecs() = listOf(
         category = SettingsCategory.LOCAL_LIBRARY,
         title = "Local sources",
         icon = Icons.Default.Folder,
-        subtitle = "Jellyfin, SMB shares, on-device files",
+        subtitle = "Media folders on this device",
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(

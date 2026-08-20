@@ -3,7 +3,7 @@ package com.nuvio.tv.domain.model.locallibrary
 import androidx.compose.runtime.Immutable
 import com.nuvio.tv.domain.model.ContentType
 
-/** One scanned media file, before TMDB matching (by a server hint or a filename search). */
+/** One scanned media file, before TMDB matching. */
 @Immutable
 data class ScannedItem(
     val sourceId: String,
@@ -12,9 +12,9 @@ data class ScannedItem(
     val fileName: String,
     val sizeBytes: Long? = null,
     val durationMs: Long? = null,
-    /** Jellyfin item id if the source backend already knows it. */
+    /** Backend item id if the source already knows it. */
     val sourceItemId: String? = null,
-    /** TMDB id if the source already resolved it (e.g. Jellyfin ProviderIds.Tmdb). */
+    /** TMDB id if the source already resolved it. */
     val tmdbHintId: Int? = null,
     /** Filename-derived hints — populated by FilenameParser, may be overridden by matcher. */
     val parsedTitle: String? = null,

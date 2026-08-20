@@ -190,7 +190,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
             name = ADDON_NAME,
             displayName = ADDON_NAME,
             version = "1.0.0",
-            description = "Your local Jellyfin / SMB / on-device library",
+            description = "Your on-device media library",
             logo = null,
             baseUrl = SYNTHETIC_BASE_URL,
             catalogs = catalogs,

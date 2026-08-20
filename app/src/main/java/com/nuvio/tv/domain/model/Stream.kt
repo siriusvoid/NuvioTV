@@ -261,7 +261,7 @@ data class ProxyHeaders(
     val response: Map<String, String>?
 )
 
-/** A subtitle track delivered with a [Stream] (e.g. beside the file on an SMB share or Jellyfin), attached to ExoPlayer at startup. */
+/** A subtitle track delivered with a [Stream], attached to ExoPlayer at startup. */
 @Immutable
 data class ExternalSubtitle(
     val url: String,

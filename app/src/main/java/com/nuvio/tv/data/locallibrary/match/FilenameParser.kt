@@ -13,7 +13,7 @@ data class ParsedFilename(
     val originalTitle: String = title
 )
 
-/** Extracts title, year and S/E from Plex/Jellyfin-style and fansub filenames. */
+/** Extracts title, year and S/E from Plex-style and fansub filenames. */
 object FilenameParser {
 
     private val episodePatterns = listOf(

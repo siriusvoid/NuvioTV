@@ -65,7 +65,6 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import com.nuvio.tv.domain.model.locallibrary.SourceKind
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
@@ -79,7 +78,6 @@ fun AddSourceScreen(
     onBackPress: () -> Unit,
     viewModel: LocalLibrarySettingsViewModel = hiltViewModel()
 ) {
-    var selected by remember { mutableStateOf(SourceKind.JELLYFIN) }
     val addResult by viewModel.addResult.collectAsStateWithLifecycle()
 
     LaunchedEffect(addResult) {
@@ -89,252 +87,11 @@ fun AddSourceScreen(
         }
     }
 
-    LaunchedEffect(selected) { viewModel.clearTestResult() }
-    DisposableEffect(Unit) { onDispose { viewModel.clearTestResult() } }
-
     SettingsStandaloneScaffold(
         title = "Add Source",
-        subtitle = "Pick a backend, then enter its connection details."
+        subtitle = "Pick a folder on this device to scan for media."
     ) {
-        SettingsDetailHeader(
-            title = "Backend",
-            subtitle = "Choose where this content is served from."
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            BackendChip("Jellyfin", selected == SourceKind.JELLYFIN) { selected = SourceKind.JELLYFIN }
-            BackendChip("SMB", selected == SourceKind.SMB) { selected = SourceKind.SMB }
-            BackendChip("On-device", selected == SourceKind.LOCAL_FILE) { selected = SourceKind.LOCAL_FILE }
-        }
-
-        when (selected) {
-            SourceKind.JELLYFIN -> JellyfinForm(viewModel, addResult)
-            SourceKind.SMB -> SmbForm(viewModel, addResult)
-            SourceKind.LOCAL_FILE -> LocalFileForm(viewModel, addResult)
-        }
-    }
-}
-
-@Composable
-private fun BackendChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.colors(
-            containerColor = if (selected) NuvioColors.FocusRing else NuvioColors.Background,
-            focusedContainerColor = if (selected) NuvioColors.FocusRing else NuvioColors.BackgroundElevated
-        ),
-        border = CardDefaults.border(
-            focusedBorder = Border(
-                border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                shape = RoundedCornerShape(999.dp)
-            )
-        ),
-        shape = CardDefaults.shape(RoundedCornerShape(999.dp))
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-            color = if (selected) Color.Black else NuvioColors.TextPrimary,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
-
-@Composable
-private fun JellyfinForm(
-    viewModel: LocalLibrarySettingsViewModel,
-    addResult: LocalLibrarySettingsViewModel.AddResult?
-) {
-    var displayName by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("https://") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var submitting by remember { mutableStateOf(false) }
-    val canSubmit = url.isNotBlank() && username.isNotBlank() && password.isNotBlank()
-    val discoveryState by viewModel.discoveryState.collectAsStateWithLifecycle()
-    val scanning = discoveryState is LocalLibrarySettingsViewModel.DiscoveryState.Scanning
-
-    LaunchedEffect(addResult) {
-        if (addResult != null) submitting = false
-    }
-
-    // On a successful auto-detect, prefill the URL and reset discovery state.
-    LaunchedEffect(discoveryState) {
-        val state = discoveryState
-        if (state is LocalLibrarySettingsViewModel.DiscoveryState.Found) {
-            url = state.url
-        }
-    }
-
-    DisposableEffect(Unit) { onDispose { viewModel.clearDiscoveryState() } }
-
-    SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = { viewModel.discoverJellyfin() },
-                enabled = !scanning && !submitting,
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.Background,
-                    contentColor = NuvioColors.TextPrimary,
-                    focusedContainerColor = NuvioColors.Background,
-                    focusedContentColor = NuvioColors.TextPrimary
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                        shape = RoundedCornerShape(50)
-                    )
-                )
-            ) {
-                Text(
-                    text = if (scanning) "Scanning network…" else "Auto-detect server",
-                    color = NuvioColors.TextPrimary
-                )
-            }
-            DiscoveryStatusBanner(discoveryState)
-            TextRow(label = "Display name", value = displayName, onValueChange = { displayName = it })
-            TextRow(label = "Server URL", value = url, onValueChange = { url = it }, keyboard = KeyboardType.Uri)
-            TextRow(label = "Username", value = username, onValueChange = { username = it })
-            TextRow(label = "Password", value = password, onValueChange = { password = it }, isPassword = true)
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = {
-                    submitting = true
-                    viewModel.clearAddResult()
-                    viewModel.addJellyfin(displayName, url, username, password)
-                },
-                enabled = canSubmit && !submitting && !scanning,
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.FocusRing,
-                    contentColor = Color.Black,
-                    focusedContainerColor = NuvioColors.FocusRing,
-                    focusedContentColor = Color.Black
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.TextPrimary),
-                        shape = RoundedCornerShape(50)
-                    )
-                )
-            ) {
-                Text(
-                    text = if (submitting) "Testing connection…" else "Test & Save",
-                    color = Color.Black
-                )
-            }
-            ResultBanner(addResult)
-        }
-    }
-}
-
-@Composable
-private fun DiscoveryStatusBanner(state: LocalLibrarySettingsViewModel.DiscoveryState) {
-    when (state) {
-        is LocalLibrarySettingsViewModel.DiscoveryState.Found -> {
-            val label = state.serverName?.let { "Found Jellyfin server: $it (${state.url})" }
-                ?: "Found Jellyfin server: ${state.url}"
-            Text(
-                text = label,
-                color = Color(0xFF6BCB77),
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        LocalLibrarySettingsViewModel.DiscoveryState.NotFound -> {
-            Text(
-                text = "No Jellyfin server found on the local network. Please enter the URL manually.",
-                color = Color(0xFFFF6B6B),
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        else -> Unit
-    }
-}
-
-@Composable
-private fun SmbForm(
-    viewModel: LocalLibrarySettingsViewModel,
-    addResult: LocalLibrarySettingsViewModel.AddResult?
-) {
-    var displayName by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("smb://") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var domain by remember { mutableStateOf("") }
-    var submitting by remember { mutableStateOf(false) }
-    val canSubmit = run {
-        val cleaned = url.removePrefix("smb://").removePrefix("//").trim('/')
-        cleaned.split('/').filter { it.isNotBlank() }.size >= 2
-    }
-
-    LaunchedEffect(addResult) {
-        if (addResult != null) submitting = false
-    }
-
-    SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TextRow(label = "Display name", value = displayName, onValueChange = { displayName = it })
-            TextRow(
-                label = "Share path (smb://host/share[/sub/dir])",
-                value = url,
-                onValueChange = { url = it },
-                keyboard = KeyboardType.Uri
-            )
-            TextRow(label = "Username (optional)", value = username, onValueChange = { username = it })
-            TextRow(label = "Password (optional)", value = password, onValueChange = { password = it }, isPassword = true)
-            TextRow(label = "Domain (optional)", value = domain, onValueChange = { domain = it })
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = {
-                    submitting = true
-                    viewModel.clearAddResult()
-                    viewModel.addSmb(
-                        displayName,
-                        url,
-                        username.takeIf { it.isNotBlank() },
-                        password.takeIf { it.isNotBlank() },
-                        domain.takeIf { it.isNotBlank() }
-                    )
-                },
-                enabled = canSubmit && !submitting,
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.FocusRing,
-                    contentColor = Color.Black,
-                    focusedContainerColor = NuvioColors.FocusRing,
-                    focusedContentColor = Color.Black
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.TextPrimary),
-                        shape = RoundedCornerShape(50)
-                    )
-                )
-            ) {
-                Text(
-                    text = if (submitting) "Testing connection…" else "Test & Save",
-                    color = Color.Black
-                )
-            }
-            ResultBanner(addResult)
-        }
+        LocalFileForm(viewModel, addResult)
     }
 }
 
@@ -550,22 +307,3 @@ private fun ResultBanner(result: LocalLibrarySettingsViewModel.AddResult?) {
     }
 }
 
-@Composable
-private fun TestResultBanner(result: LocalLibrarySettingsViewModel.TestResult?) {
-    when (result) {
-        is LocalLibrarySettingsViewModel.TestResult.Success -> Text(
-            text = "✓ Connection successful",
-            color = Color(0xFF6BCB77),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        is LocalLibrarySettingsViewModel.TestResult.Failure -> Text(
-            text = "Test failed: ${result.message}",
-            color = Color(0xFFFF6B6B),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-        LocalLibrarySettingsViewModel.TestResult.Running,
-        null -> Unit
-    }
-}

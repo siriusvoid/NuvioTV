@@ -3,7 +3,6 @@ package com.nuvio.tv.ui.screens.settings.locallibrary
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.data.locallibrary.LocalLibraryManager
-import com.nuvio.tv.data.locallibrary.discovery.JellyfinDiscovery
 import com.nuvio.tv.data.locallibrary.match.FilenameParser
 import com.nuvio.tv.data.locallibrary.match.MediaMatcher
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
@@ -24,8 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class LocalLibrarySettingsViewModel @Inject constructor(
     private val manager: LocalLibraryManager,
-    private val matcher: MediaMatcher,
-    private val jellyfinDiscovery: JellyfinDiscovery
+    private val matcher: MediaMatcher
 ) : ViewModel() {
 
     data class UiState(
@@ -42,33 +40,13 @@ class LocalLibrarySettingsViewModel @Inject constructor(
     private val _addResult = MutableStateFlow<AddResult?>(null)
     val addResult: StateFlow<AddResult?> = _addResult.asStateFlow()
 
-    private val _testResult = MutableStateFlow<TestResult?>(null)
-    val testResult: StateFlow<TestResult?> = _testResult.asStateFlow()
 
-    private val _discoveryState = MutableStateFlow<DiscoveryState>(DiscoveryState.Idle)
-    val discoveryState: StateFlow<DiscoveryState> = _discoveryState.asStateFlow()
 
     private val _unmatched = MutableStateFlow<List<ScannedItem>>(emptyList())
     val unmatched: StateFlow<List<ScannedItem>> = _unmatched.asStateFlow()
 
     private val _candidates = MutableStateFlow<List<TmdbDiscoverResult>>(emptyList())
     val candidates: StateFlow<List<TmdbDiscoverResult>> = _candidates.asStateFlow()
-
-    fun addJellyfin(displayName: String, url: String, username: String, password: String) {
-        viewModelScope.launch {
-            val result = manager.addJellyfin(displayName.ifBlank { url }, url, username, password)
-            _addResult.value = if (result.isSuccess) AddResult.Success
-            else AddResult.Failure(result.exceptionOrNull()?.message ?: "Failed")
-        }
-    }
-
-    fun addSmb(displayName: String, url: String, username: String?, password: String?, domain: String?) {
-        viewModelScope.launch {
-            val result = manager.addSmb(displayName.ifBlank { url }, url, username, password, domain)
-            _addResult.value = if (result.isSuccess) AddResult.Success
-            else AddResult.Failure(result.exceptionOrNull()?.message ?: "Failed")
-        }
-    }
 
     fun addLocalFile(displayName: String, treeUri: String) {
         viewModelScope.launch {
@@ -80,46 +58,6 @@ class LocalLibrarySettingsViewModel @Inject constructor(
 
     fun clearAddResult() {
         _addResult.value = null
-    }
-
-    fun testJellyfin(url: String, username: String, password: String) {
-        viewModelScope.launch {
-            _testResult.value = TestResult.Running
-            val result = manager.testJellyfin(url, username, password)
-            _testResult.value = if (result.isSuccess) TestResult.Success
-            else TestResult.Failure(result.exceptionOrNull()?.message ?: "Connection failed")
-        }
-    }
-
-    fun testSmb(url: String, username: String?, password: String?, domain: String?) {
-        viewModelScope.launch {
-            _testResult.value = TestResult.Running
-            val result = manager.testSmb(url, username, password, domain)
-            _testResult.value = if (result.isSuccess) TestResult.Success
-            else TestResult.Failure(result.exceptionOrNull()?.message ?: "Connection failed")
-        }
-    }
-
-    fun clearTestResult() {
-        _testResult.value = null
-    }
-
-    /** Looks for Jellyfin on the local subnet and hands the url it finds to the form. */
-    fun discoverJellyfin() {
-        if (_discoveryState.value is DiscoveryState.Scanning) return
-        viewModelScope.launch {
-            _discoveryState.value = DiscoveryState.Scanning
-            val hit = runCatching { jellyfinDiscovery.discover() }.getOrNull()
-            _discoveryState.value = if (hit != null) {
-                DiscoveryState.Found(hit.url, hit.serverName)
-            } else {
-                DiscoveryState.NotFound
-            }
-        }
-    }
-
-    fun clearDiscoveryState() {
-        _discoveryState.value = DiscoveryState.Idle
     }
 
     fun rescan(sourceId: String) = manager.rescan(sourceId)
@@ -165,8 +103,6 @@ class LocalLibrarySettingsViewModel @Inject constructor(
         _unmatched.value.firstOrNull { it.itemKey == itemKey && it.sourceId == sourceId }
 
     fun kindLabel(kind: SourceKind): String = when (kind) {
-        SourceKind.JELLYFIN -> "Jellyfin"
-        SourceKind.SMB -> "SMB"
         SourceKind.LOCAL_FILE -> "On-device"
     }
 
@@ -175,16 +111,4 @@ class LocalLibrarySettingsViewModel @Inject constructor(
         data class Failure(val message: String) : AddResult()
     }
 
-    sealed class TestResult {
-        object Running : TestResult()
-        object Success : TestResult()
-        data class Failure(val message: String) : TestResult()
-    }
-
-    sealed class DiscoveryState {
-        object Idle : DiscoveryState()
-        object Scanning : DiscoveryState()
-        data class Found(val url: String, val serverName: String?) : DiscoveryState()
-        object NotFound : DiscoveryState()
-    }
 }

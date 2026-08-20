@@ -17,7 +17,7 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 
-/** Resolves a scanned item to TMDB: user override, cached match, server hint, then scored search. */
+/** Resolves a scanned item to TMDB: user override, cached match, id hint, then scored search. */
 @Singleton
 class MediaMatcher @Inject constructor(
     private val tmdbApi: TmdbApi,

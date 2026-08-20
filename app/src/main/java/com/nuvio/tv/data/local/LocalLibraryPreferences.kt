@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Profile-scoped list of local library sources; secrets are in [com.nuvio.tv.data.locallibrary.LocalLibraryCredentialStore]. */
+/**
+ * Profile-scoped DataStore for the list of configured local library sources.
+ */
 @Singleton
 class LocalLibraryPreferences @Inject constructor(
     private val factory: ProfileDataStoreFactory,

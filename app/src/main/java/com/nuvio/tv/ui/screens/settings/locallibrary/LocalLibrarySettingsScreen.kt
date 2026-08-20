@@ -40,7 +40,7 @@ fun LocalLibrarySettingsScreen(
 
     SettingsStandaloneScaffold(
         title = "Local sources",
-        subtitle = "Connect Jellyfin servers, SMB shares, or on-device folders."
+        subtitle = "Scan folders on this device for media."
     ) {
         SettingsDetailHeader(
             title = "Sources",
@@ -58,7 +58,7 @@ fun LocalLibrarySettingsScreen(
         ) {
             SettingsActionRow(
                 title = "Add source…",
-                subtitle = "Jellyfin / SMB share / On-device folder",
+                subtitle = "On-device folder",
                 value = null,
                 onClick = onNavigateToAddSource
             )

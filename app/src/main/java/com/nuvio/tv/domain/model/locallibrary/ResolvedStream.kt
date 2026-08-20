@@ -9,10 +9,10 @@ import androidx.compose.runtime.Immutable
 @Immutable
 data class ResolvedStream(
     val url: String,
-    /** Extra headers required for playback (e.g. Jellyfin auth bearer). */
+    /** Extra headers required for playback. */
     val headers: Map<String, String> = emptyMap(),
     val mimeHint: String? = null,
-    /** "http", "https", "smb", "content", "file" — used to route the right ExoPlayer DataSource. */
+    /** "content" or "file" — used to route the right ExoPlayer DataSource. */
     val scheme: String,
     val sizeBytes: Long? = null,
     val durationMs: Long? = null,
@@ -35,5 +35,5 @@ data class ExternalSubtitleFile(
     val headers: Map<String, String> = emptyMap(),
     val source: Source = Source.LOCAL_SIDECAR
 ) {
-    enum class Source { LOCAL_SIDECAR, JELLYFIN }
+    enum class Source { LOCAL_SIDECAR }
 }

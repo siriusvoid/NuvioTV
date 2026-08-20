@@ -31,7 +31,6 @@ import javax.inject.Singleton
 @Singleton
 class LocalLibraryManager @Inject constructor(
     private val preferences: LocalLibraryPreferences,
-    private val credentialStore: LocalLibraryCredentialStore,
     private val index: LocalLibraryIndex,
     private val overrideStore: MatchOverrideStore,
     private val matcher: MediaMatcher,
@@ -57,60 +56,6 @@ class LocalLibraryManager @Inject constructor(
         }
     }
 
-    suspend fun addJellyfin(
-        displayName: String,
-        url: String,
-        username: String,
-        password: String
-    ): Result<LocalLibrarySourceConfig> = runCatching {
-        val id = generateSourceId()
-        val config = LocalLibrarySourceConfig(
-            id = id,
-            displayName = displayName,
-            kind = com.nuvio.tv.domain.model.locallibrary.SourceKind.JELLYFIN,
-            urlOrPath = url.trimEnd('/'),
-            params = if (username.isNotBlank()) mapOf("username" to username) else emptyMap()
-        )
-        val source = sourceFactory.create(config) as com.nuvio.tv.data.locallibrary.source.JellyfinSource
-        source.authenticate(username, password)
-            ?: throw IllegalStateException("Jellyfin authentication failed")
-        preferences.upsert(config)
-        kickoffScan(config)
-        config
-    }.onFailure { Log.e(TAG, "addJellyfin failed for $url", it) }
-
-    suspend fun addSmb(
-        displayName: String,
-        url: String,
-        username: String?,
-        password: String?,
-        domain: String?
-    ): Result<LocalLibrarySourceConfig> {
-        val id = generateSourceId()
-        return runCatching {
-            val config = LocalLibrarySourceConfig(
-                id = id,
-                displayName = displayName,
-                kind = com.nuvio.tv.domain.model.locallibrary.SourceKind.SMB,
-                urlOrPath = url
-            )
-            if (!username.isNullOrBlank()) credentialStore.putSecret(id, LocalLibraryCredentialStore.Field.SMB_USERNAME, username)
-            if (!password.isNullOrBlank()) credentialStore.putSecret(id, LocalLibraryCredentialStore.Field.SMB_PASSWORD, password)
-            if (!domain.isNullOrBlank()) credentialStore.putSecret(id, LocalLibraryCredentialStore.Field.SMB_DOMAIN, domain)
-            val source = sourceFactory.create(config)
-            val test = source.testConnection()
-            if (test.isFailure) {
-                throw test.exceptionOrNull() ?: IllegalStateException("SMB test failed")
-            }
-            preferences.upsert(config)
-            kickoffScan(config)
-            config
-        }.onFailure {
-            credentialStore.clearSource(id)
-            Log.e(TAG, "addSmb failed for $url", it)
-        }
-    }
-
     suspend fun addLocalFile(
         displayName: String,
         treeUri: String
@@ -132,53 +77,10 @@ class LocalLibraryManager @Inject constructor(
         config
     }.onFailure { Log.e(TAG, "addLocalFile failed for $treeUri", it) }
 
-    /** Checks a Jellyfin url and credentials without saving anything, for Test Connection. */
-    suspend fun testJellyfin(url: String, username: String, password: String): Result<Unit> {
-        if (url.isBlank()) return Result.failure(IllegalArgumentException("URL is required"))
-        if (username.isBlank()) return Result.failure(IllegalArgumentException("Username is required"))
-        val transientConfig = LocalLibrarySourceConfig(
-            id = "test-jellyfin-${System.nanoTime()}",
-            displayName = "Test",
-            kind = com.nuvio.tv.domain.model.locallibrary.SourceKind.JELLYFIN,
-            urlOrPath = url.trimEnd('/')
-        )
-        val source = sourceFactory.create(transientConfig) as com.nuvio.tv.data.locallibrary.source.JellyfinSource
-        return source.verifyCredentials(username, password).map { }
-    }
-
-    /** Checks an SMB share by listing its root; the credentials live under a throwaway id for the test only. */
-    suspend fun testSmb(
-        url: String,
-        username: String?,
-        password: String?,
-        domain: String?
-    ): Result<Unit> {
-        if (url.isBlank()) return Result.failure(IllegalArgumentException("URL is required"))
-        val transientId = "test-smb-${System.nanoTime()}"
-        return try {
-            if (!username.isNullOrBlank()) credentialStore.putSecret(transientId, LocalLibraryCredentialStore.Field.SMB_USERNAME, username)
-            if (!password.isNullOrBlank()) credentialStore.putSecret(transientId, LocalLibraryCredentialStore.Field.SMB_PASSWORD, password)
-            if (!domain.isNullOrBlank()) credentialStore.putSecret(transientId, LocalLibraryCredentialStore.Field.SMB_DOMAIN, domain)
-            val transientConfig = LocalLibrarySourceConfig(
-                id = transientId,
-                displayName = "Test",
-                kind = com.nuvio.tv.domain.model.locallibrary.SourceKind.SMB,
-                urlOrPath = url
-            )
-            val source = sourceFactory.create(transientConfig)
-            source.testConnection().also { result ->
-                result.exceptionOrNull()?.let { Log.e(TAG, "testSmb failed for $url", it) }
-            }
-        } finally {
-            credentialStore.clearSource(transientId)
-        }
-    }
-
     suspend fun removeSource(sourceId: String) {
         scanJobs[sourceId]?.cancel()
         scanJobs.remove(sourceId)
         preferences.remove(sourceId)
-        credentialStore.clearSource(sourceId)
         index.deleteSource(sourceId)
         overrideStore.removeForSource(sourceId)
         metaRepository.clearCache()

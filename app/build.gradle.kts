@@ -541,8 +541,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // Local Library
-    implementation(libs.smbj)
-    implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.documentfile)
 
     // Performance profiling
