@@ -68,6 +68,7 @@ data class MetaDetailsUiState(
     val showFullReleaseDate: Boolean = true,
     val hideParentalRating: Boolean = false,
     val hideGenres: Boolean = false,
+    val hideExtraMetadata: Boolean = false,
     val hideActorNames: Boolean = false,
     val moreLikeThis: List<MetaPreview> = emptyList(),
     val moreLikeThisSource: MoreLikeThisSource? = null,
