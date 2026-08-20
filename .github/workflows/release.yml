@@ -1,5 +1,4 @@
 name: Release (Full APK)
-run-name: Release (from build.gradle.kts)
 
 # Builds the FULL flavor (in-app updater enabled) as release-like, debug-signed
 # APKs and publishes them as a GitHub Release. The in-app updater on test/main
@@ -10,20 +9,17 @@ run-name: Release (from build.gradle.kts)
 #
 # Reuses the same secrets as build-benchmark.yml; no extra secrets needed.
 #
-# Version is the SINGLE SOURCE OF TRUTH in app/build.gradle.kts (versionName /
-# versionCode). A release auto-publishes whenever a push to test/main changes
-# build.gradle.kts to a version that has no release yet — so bumping the version
-# (including an upstream sync that bumps it) cuts a release automatically. If a
-# release for the current versionName already exists, the run skips (no rebuild).
-# You can also trigger manually via workflow_dispatch. gh creates the per-release
-# tag automatically, so no tag pushing is needed.
+# Every push to test/main cuts a release — there is no version gate. versionName /
+# versionCode still come from app/build.gradle.kts, but the release tag appends the
+# workflow run number (e.g. 0.7.13-beta-42) so each build is unique and compares as
+# strictly newer than the last for the in-app updater. You can also trigger manually
+# via workflow_dispatch. gh creates the per-release tag automatically, so no tag
+# pushing is needed.
 
 on:
   push:
     branches:
       - test/main
-    paths:
-      - 'app/build.gradle.kts'
   workflow_dispatch:
     inputs:
       notes:
@@ -67,18 +63,16 @@ jobs:
             echo "::error::Could not parse versionName/versionCode from app/build.gradle.kts"
             exit 1
           fi
+          # Every push cuts its own release, so the tag carries the run number.
+          # The trailing number keeps each build strictly newer than the last for
+          # the in-app updater's version comparison.
+          RELEASE_TAG="${VERSION_NAME}-${GITHUB_RUN_NUMBER}"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          if gh release view "$VERSION_NAME" >/dev/null 2>&1; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "Release $VERSION_NAME already exists — nothing to do. Bump versionName/versionCode in app/build.gradle.kts to cut a new one."
-          else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "Will build and release versionName=$VERSION_NAME versionCode=$VERSION_CODE"
-          fi
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Will build and release $RELEASE_TAG (versionName=$VERSION_NAME versionCode=$VERSION_CODE)"
 
       - name: Prepare local properties
-        if: ${{ steps.ver.outputs.should_release == 'true' }}
         env:
           LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
           LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
@@ -91,7 +85,6 @@ jobs:
           fi
 
       - name: Restore shared debug keystore
-        if: ${{ steps.ver.outputs.should_release == 'true' }}
         run: |
           if [ -z "${{ secrets.DEBUG_KEYSTORE_B64 }}" ]; then
             echo "::error::DEBUG_KEYSTORE_B64 secret is not set; release APKs would be signed with a random key and fail to install over previous builds."
@@ -100,7 +93,6 @@ jobs:
           echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 --decode > "${{ runner.temp }}/debug.keystore"
 
       - name: Build full benchmark APKs (release-like, debug-signed)
-        if: ${{ steps.ver.outputs.should_release == 'true' }}
         env:
           INTRODB_API_URL: ${{ secrets.INTRODB_API_URL }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
@@ -110,11 +102,11 @@ jobs:
         run: ./gradlew assembleFullBenchmark
 
       - name: Create GitHub Release
-        if: ${{ steps.ver.outputs.should_release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+          RELEASE_TAG: ${{ steps.ver.outputs.release_tag }}
           NOTES: ${{ inputs.notes }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
@@ -153,7 +145,7 @@ jobs:
               NOTES="In-app update build — versionName ${VERSION_NAME} (versionCode ${VERSION_CODE})."
             fi
           fi
-          ARGS=(release create "$VERSION_NAME" --title "NuvioTV ${VERSION_NAME}" --notes "$NOTES")
+          ARGS=(release create "$RELEASE_TAG" --title "NuvioTV ${RELEASE_TAG}" --notes "$NOTES")
           if [ "$PRERELEASE" = "true" ]; then
             ARGS+=(--prerelease)
           fi
@@ -164,3 +156,23 @@ jobs:
             exit 1
           fi
           gh "${ARGS[@]}" "${APKS[@]}"
+
+      # Every push cuts a release and the in-app updater only ever reads
+      # releases/latest, so everything older is deleted along with the orphaned
+      # tags a rebase leaves behind.
+      - name: Prune old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: 1
+        run: |
+          gh release list --limit 200 --json tagName,createdAt \
+            --jq "sort_by(.createdAt) | reverse | .[${KEEP}:] | .[].tagName" > stale-tags.txt
+          if [ ! -s stale-tags.txt ]; then
+            echo "Nothing to prune."
+            exit 0
+          fi
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "Deleting old release $tag"
+            gh release delete "$tag" --yes --cleanup-tag || echo "::warning::Could not delete release $tag"
+          done < stale-tags.txt
