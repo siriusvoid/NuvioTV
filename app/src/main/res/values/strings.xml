@@ -1027,6 +1027,8 @@
     <string name="layout_hide_parental_rating_sub">Hide the parental/age rating badge on the home and detail screens.</string>
     <string name="layout_hide_genres">Hide genres</string>
     <string name="layout_hide_genres_sub">Hide genre labels on the home hero and detail screens.</string>
+    <string name="layout_hide_extra_metadata">Hide extra metadata</string>
+    <string name="layout_hide_extra_metadata_sub">Hide year, country, runtime, language and status on the detail page.</string>
     <string name="layout_hide_actor_names">Hide actor names &amp; photos</string>
     <string name="layout_hide_actor_names_sub">Hide cast actor/actress names and their photos. Character names and character art stay visible where possible.</string>
     <string name="layout_section_focused">Focused Poster</string>
