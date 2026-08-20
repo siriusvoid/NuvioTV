@@ -1195,10 +1195,13 @@ private fun MetaDetailsContent(
             meta.type == ContentType.TV ||
             meta.apiType in listOf("series", "tv")
     }
-    val hasCastSection = directorWriterMembers.isNotEmpty() || normalCastMembers.isNotEmpty()
+    // Fork: director/writer entries are hidden; only real cast keeps the section alive.
+    val hasCastSection = normalCastMembers.isNotEmpty()
     val hasMoreLikeThisSection = moreLikeThis.isNotEmpty()
-    val hasTrailerSection = remember(meta.trailers) { meta.trailers.any { !it.ytId.isNullOrBlank() } }
-    val hasRatingsSection = isTvShow
+    // Fork: Trailers section is hidden on the detail page.
+    val hasTrailerSection = false
+    // Fork: Ratings section is hidden on the detail page.
+    val hasRatingsSection = false
     val strTabCast = stringResource(R.string.detail_tab_cast)
     val strTabRatings = stringResource(R.string.detail_tab_ratings)
     val strTabMoreLikeThis = stringResource(R.string.detail_tab_more_like_this)
@@ -1796,7 +1799,6 @@ private fun MetaDetailsContent(
                                 CastSection(
                                     cast = normalCastMembers,
                                     title = if (hasVisiblePeopleTabs) "" else strTabCast,
-                                    leadingCast = directorWriterMembers,
                                     hideActorNames = hideActorNames,
                                     upFocusRequester = if (hasVisiblePeopleTabs) castTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
                                     downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,

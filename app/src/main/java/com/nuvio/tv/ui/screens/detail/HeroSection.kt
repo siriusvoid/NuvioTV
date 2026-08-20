@@ -115,9 +115,6 @@ fun HeroContentSection(
     onShowFullDescription: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val isSeriesApi = remember(meta.apiType) {
-        meta.apiType.equals("series", ignoreCase = true) || meta.apiType.equals("tv", ignoreCase = true)
-    }
     val logoModel = remember(context, meta.logo) {
         meta.logo?.let { logo ->
             ImageRequest.Builder(context)
@@ -139,20 +136,6 @@ fun HeroContentSection(
         context = context,
         rawRes = com.nuvio.tv.R.raw.trailer_play_button
     )
-    val strCreator = stringResource(R.string.hero_creator)
-    val strDirector = stringResource(R.string.hero_director)
-    val strWriter = stringResource(R.string.hero_writer)
-    val creditLine = remember(meta.director, meta.writer, isSeriesApi) {
-        val directorLine = meta.director.takeIf { it.isNotEmpty() }?.joinToString(", ")
-        val writerLine = meta.writer.takeIf { it.isNotEmpty() }?.joinToString(", ")
-        when {
-            !directorLine.isNullOrBlank() -> {
-                if (isSeriesApi) strCreator.format(directorLine) else strDirector.format(directorLine)
-            }
-            !writerLine.isNullOrBlank() -> strWriter.format(writerLine)
-            else -> null
-        }
-    }
 
     // Animate logo properties for trailer mode
     val logoHeight by animateDpAsState(
@@ -300,19 +283,6 @@ fun HeroContentSection(
                     }
 
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-
-                    // Director/Writer line above description
-                    if (!creditLine.isNullOrBlank()) {
-                        Text(
-                            text = creditLine,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = NuvioTheme.extendedColors.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth(0.6f)
-                        )
-                        Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
-                    }
 
                     if (mdbListRatings?.isEmpty() == false) {
                         MDBListRatingsRow(ratings = mdbListRatings)
