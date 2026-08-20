@@ -106,6 +106,7 @@ fun HeroContentSection(
     showFullReleaseDate: Boolean = true,
     hideParentalRating: Boolean = false,
     hideGenres: Boolean = false,
+    hideExtraMetadata: Boolean = false,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     restorePlayFocusToken: Int = 0,
@@ -392,6 +393,7 @@ fun HeroContentSection(
                         showFullReleaseDate = showFullReleaseDate,
                         hideParentalRating = hideParentalRating,
                         hideGenres = hideGenres,
+                        hideExtraMetadata = hideExtraMetadata,
                         tmdbRating = tmdbRating
                     )
                 }
@@ -645,13 +647,16 @@ private fun MetaInfoRow(
     showFullReleaseDate: Boolean = true,
     hideParentalRating: Boolean = false,
     hideGenres: Boolean = false,
+    hideExtraMetadata: Boolean = false,
     tmdbRating: Float? = null
 ) {
     val context = LocalContext.current
     val genresText = remember(meta.genres) { meta.genres.joinToString(" • ") }
     val runtimeText = remember(meta.runtime) { meta.runtime?.let { formatRuntime(it) } }
-    val yearText = remember(meta.releaseInfo, meta.released, meta.type, showFullReleaseDate) {
-        if (showFullReleaseDate && meta.type == ContentType.MOVIE) {
+    val yearText = remember(meta.releaseInfo, meta.released, meta.type, showFullReleaseDate, hideExtraMetadata) {
+        if (hideExtraMetadata) {
+            null
+        } else if (showFullReleaseDate && meta.type == ContentType.MOVIE) {
             meta.released
                 ?.let { runCatching { java.time.OffsetDateTime.parse(it).toLocalDate() }.getOrNull() }
                 ?.let { val locale = java.util.Locale.getDefault(); java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, "dMMMMy"), locale).format(java.util.Date(it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli())) }
@@ -663,6 +668,9 @@ private fun MetaInfoRow(
     val imdbRating = if (hideImdbRating) null else meta.imdbRating
     val shouldShowImdbRating = imdbRating != null
     val shouldShowTmdbRating = tmdbRating != null
+    val showGenres = !hideGenres && meta.genres.isNotEmpty()
+    // With everything hidden, skip the row so it doesn't leave a blank strip.
+    val hasPrimaryMeta = showGenres || yearText != null || shouldShowImdbRating || shouldShowTmdbRating
     val tmdbModel = remember(context) {
         ImageRequest.Builder(context)
             .data(com.nuvio.tv.R.raw.mdblist_tmdb)
@@ -682,8 +690,8 @@ private fun MetaInfoRow(
     val strStatusRumored = stringResource(if (isSeries) R.string.series_status_rumored else R.string.movie_status_rumored)
     val strStatusInProduction = stringResource(if (isSeries) R.string.series_status_in_production else R.string.movie_status_in_production)
     val strStatusPostProduction = stringResource(if (isSeries) R.string.series_status_post_production else R.string.movie_status_post_production)
-    val statusBadge = remember(meta.status, isSeries) {
-        when (meta.status?.trim()?.lowercase()) {
+    val statusBadge = remember(meta.status, isSeries, hideExtraMetadata) {
+        if (hideExtraMetadata) null else when (meta.status?.trim()?.lowercase()) {
             "ended" -> strStatusEnded.uppercase()
             "continuing", "returning series" -> strStatusContinuing.uppercase()
             "current" -> strStatusCurrent.uppercase()
@@ -697,8 +705,9 @@ private fun MetaInfoRow(
         }
     }
     Log.d("HeroBadge", "name=${meta.name} ageRating=${meta.ageRating} status=${meta.status} ageRatingBadge=$ageRatingBadge statusBadge=$statusBadge")
-    val secondaryItems = remember(runtimeText, meta.country, meta.language) {
+    val secondaryItems = remember(runtimeText, meta.country, meta.language, hideExtraMetadata) {
         buildList<String> {
+            if (hideExtraMetadata) return@buildList
             runtimeText?.takeIf { it.isNotBlank() }?.let { add(it) }
             meta.country?.trim()?.takeIf { it.isNotBlank() }?.let { add(normalizeCountryLabel(it)) }
             meta.language?.trim()?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
@@ -707,69 +716,71 @@ private fun MetaInfoRow(
 
     Column(verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
         // Primary row: Genres, Release, Ratings
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Show all genres
-            if (!hideGenres && meta.genres.isNotEmpty()) {
-                Text(
-                    text = genresText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.extendedColors.textSecondary
-                )
-                if (yearText != null || shouldShowImdbRating || shouldShowTmdbRating) {
-                    MetaInfoDivider()
-                }
-            }
-
-            yearText?.let { year ->
-                Text(
-                    text = year,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.extendedColors.textSecondary
-                )
-                if (shouldShowImdbRating || shouldShowTmdbRating) {
-                    MetaInfoDivider()
-                }
-            }
-
-            imdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    ImdbRatingSourceLabel(
-                        logoModifier = Modifier.size(30.dp),
-                        textStyle = MaterialTheme.typography.labelLarge,
-                        textColor = NuvioTheme.extendedColors.textSecondary
-                    )
-                    val ratingText = remember(rating) { String.format("%.1f", rating) }
+        if (hasPrimaryMeta) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Show all genres
+                if (showGenres) {
                     Text(
-                        text = ratingText,
+                        text = genresText,
                         style = MaterialTheme.typography.labelLarge,
                         color = NuvioTheme.extendedColors.textSecondary
                     )
+                    if (yearText != null || shouldShowImdbRating || shouldShowTmdbRating) {
+                        MetaInfoDivider()
+                    }
                 }
-            }
 
-            tmdbRating?.let { rating ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
-                ) {
-                    AsyncImage(
-                        model = tmdbModel,
-                        contentDescription = null,
-                        modifier = Modifier.size(NuvioTheme.spacing.xl),
-                        contentScale = ContentScale.Fit
-                    )
-                    val ratingText = remember(rating) { (rating * 10).toInt().toString() }
+                yearText?.let { year ->
                     Text(
-                        text = ratingText,
+                        text = year,
                         style = MaterialTheme.typography.labelLarge,
                         color = NuvioTheme.extendedColors.textSecondary
                     )
+                    if (shouldShowImdbRating || shouldShowTmdbRating) {
+                        MetaInfoDivider()
+                    }
+                }
+
+                imdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        ImdbRatingSourceLabel(
+                            logoModifier = Modifier.size(30.dp),
+                            textStyle = MaterialTheme.typography.labelLarge,
+                            textColor = NuvioTheme.extendedColors.textSecondary
+                        )
+                        val ratingText = remember(rating) { String.format("%.1f", rating) }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
+                }
+
+                tmdbRating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.xs)
+                    ) {
+                        AsyncImage(
+                            model = tmdbModel,
+                            contentDescription = null,
+                            modifier = Modifier.size(NuvioTheme.spacing.xl),
+                            contentScale = ContentScale.Fit
+                        )
+                        val ratingText = remember(rating) { (rating * 10).toInt().toString() }
+                        Text(
+                            text = ratingText,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = NuvioTheme.extendedColors.textSecondary
+                        )
+                    }
                 }
             }
         }
