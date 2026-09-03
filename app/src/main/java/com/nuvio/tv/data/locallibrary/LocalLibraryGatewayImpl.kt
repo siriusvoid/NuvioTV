@@ -69,6 +69,13 @@ class LocalLibraryGatewayImpl @Inject constructor(
     override fun isLocalId(id: String?): Boolean =
         id != null && id.startsWith(LOCAL_ID_PREFIX)
 
+    override suspend fun resolvedImdbIds(): Map<Int, String> =
+        overrideStore.matches.first().values
+            .mapNotNull { match ->
+                match.imdbId?.takeIf { it.isNotBlank() }?.let { match.tmdbId to it }
+            }
+            .toMap()
+
     override suspend fun catalog(
         catalogId: String,
         skip: Int,

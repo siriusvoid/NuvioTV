@@ -127,6 +127,8 @@ class LocalLibraryManager @Inject constructor(
     suspend fun matchFolder(reference: ScannedItem, tmdbId: Int, contentType: ContentType) {
         scope.launch {
             val folder = reference.relativePath.folderKey()
+            // One show, so the IMDB id is resolved once and shared by every episode.
+            val imdbId = matcher.resolveImdbId(tmdbId, contentType)
             val matches = index.load(reference.sourceId)
                 .filter { it.relativePath.folderKey() == folder }
                 .map { item ->
@@ -138,6 +140,7 @@ class LocalLibraryManager @Inject constructor(
                         season = parsed.season ?: item.parsedSeason,
                         episode = parsed.episode ?: item.parsedEpisode,
                         userSet = true,
+                        imdbId = imdbId,
                         score = 1f
                     )
                 }
