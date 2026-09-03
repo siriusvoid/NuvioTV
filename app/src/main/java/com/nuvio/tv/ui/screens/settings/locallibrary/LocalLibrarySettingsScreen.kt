@@ -2,32 +2,35 @@
 
 package com.nuvio.tv.ui.screens.settings.locallibrary
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 import com.nuvio.tv.data.locallibrary.LocalLibraryManager
 import com.nuvio.tv.domain.model.locallibrary.LocalLibrarySourceConfig
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
-import com.nuvio.tv.ui.theme.NuvioColors
+import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
+import com.nuvio.tv.ui.theme.NuvioTheme
 
 @Composable
 fun LocalLibrarySettingsScreen(
@@ -36,6 +39,8 @@ fun LocalLibrarySettingsScreen(
     onNavigateToSourceDetail: (sourceId: String) -> Unit,
     viewModel: LocalLibrarySettingsViewModel = hiltViewModel()
 ) {
+    BackHandler { onBackPress() }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     SettingsStandaloneScaffold(
@@ -52,41 +57,38 @@ fun LocalLibrarySettingsScreen(
                 it is LocalLibraryManager.ScanProgress.Matching
         }
 
-        SettingsGroupCard(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
+        SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
                 title = "Add source…",
                 subtitle = "On-device folder",
-                value = null,
+                leadingIcon = Icons.Default.CreateNewFolder,
                 onClick = onNavigateToAddSource
             )
             SettingsActionRow(
                 title = "Rescan all sources",
                 subtitle = if (anyScanning) "Scanning in progress…"
                     else "Re-index every configured source",
-                value = null,
+                leadingIcon = Icons.Default.Refresh,
                 enabled = state.sources.isNotEmpty() && !anyScanning,
                 onClick = { viewModel.rescanAllSources() }
             )
         }
 
-        if (state.sources.isEmpty()) {
-            SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "No sources yet. Add one to start scanning.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioColors.TextSecondary
-                )
-            }
-        } else {
+        // An empty card headed "Configured sources" says less than the Add source row
+        // above it already does, so it only appears once there is something to list.
+        if (state.sources.isNotEmpty()) {
             SettingsGroupCard(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                title = "Configured sources"
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
+                val sourceListState = rememberLazyListState()
+                Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
+                        state = sourceListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = NuvioTheme.spacing.sm),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(state.sources, key = { it.id }) { source ->
@@ -98,6 +100,7 @@ fun LocalLibrarySettingsScreen(
                             )
                         }
                     }
+                    SettingsVerticalScrollIndicators(state = sourceListState)
                 }
             }
         }
@@ -118,12 +121,19 @@ private fun SourceRow(
         is LocalLibraryManager.ScanProgress.Idle -> "${progress.itemCount} items"
         null -> "${config.itemCount} items"
     }
-    val disabledHint = if (!config.enabled) " · Disabled" else ""
 
     SettingsActionRow(
         title = config.displayName,
-        subtitle = "$kindLabel · $statusText$disabledHint",
-        value = null,
+        subtitle = "$kindLabel · $statusText",
+        value = if (config.enabled) null else "Disabled",
+        valueColor = NuvioTheme.colors.TextTertiary,
+        leadingIcon = Icons.Default.Folder,
+        titleTrailingIcon = if (progress is LocalLibraryManager.ScanProgress.Failed) {
+            Icons.Default.ErrorOutline
+        } else {
+            null
+        },
+        titleTrailingIconTint = NuvioTheme.colors.Error,
         onClick = onClick
     )
 }

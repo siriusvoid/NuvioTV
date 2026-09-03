@@ -2,30 +2,27 @@
 
 package com.nuvio.tv.ui.screens.settings.locallibrary
 
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.data.locallibrary.LocalLibraryManager
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
+import com.nuvio.tv.ui.screens.settings.SettingsGroupNote
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsToggleRow
-import com.nuvio.tv.ui.theme.NuvioColors
+import com.nuvio.tv.ui.theme.NuvioTheme
 import java.text.DateFormat
 import java.util.Date
 
@@ -36,26 +33,36 @@ fun SourceDetailScreen(
     onNavigateToManualMatch: (sourceId: String) -> Unit,
     viewModel: LocalLibrarySettingsViewModel = hiltViewModel()
 ) {
+    BackHandler { onBackPress() }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val config = state.sources.firstOrNull { it.id == sourceId }
     if (config == null) {
         SettingsStandaloneScaffold(title = "Source", subtitle = "") {
-            Text("Source not found.", color = NuvioColors.TextSecondary)
+            Text(
+                text = "Source not found.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = NuvioTheme.colors.TextSecondary
+            )
         }
         return
     }
 
     val progress = state.progress[sourceId]
-    val lastScan = config.lastScanAt?.let { DateFormat.getDateTimeInstance().format(Date(it)) }
-        ?: "Never"
+    // MEDIUM date keeps the locale's usual "3 Sep 2026" wording; SHORT time drops
+    // the seconds the no-arg default would add.
+    val lastScan = config.lastScanAt?.let {
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))
+    } ?: "Never"
 
     SettingsStandaloneScaffold(
         title = config.displayName,
         subtitle = viewModel.kindLabel(config.kind)
     ) {
         SettingsDetailHeader(
-            title = "Status",
-            subtitle = "Last scan: $lastScan · ${config.itemCount} items indexed"
+            title = config.displayName,
+            subtitle = "${viewModel.kindLabel(config.kind)} · Last scan: $lastScan · " +
+                "${config.itemCount} items indexed"
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
@@ -67,86 +74,57 @@ fun SourceDetailScreen(
             )
         }
 
-        if (progress != null) {
-            SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = formatProgress(progress),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NuvioColors.TextSecondary
-                )
+        // Idle repeats the item count the header already carries, so the card only
+        // earns its place while a scan is actually doing something, or has failed.
+        val activeProgress = progress?.takeIf { it !is LocalLibraryManager.ScanProgress.Idle }
+        if (activeProgress != null) {
+            SettingsGroupCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = "Scan status"
+            ) {
+                SettingsGroupNote(text = formatProgress(activeProgress))
             }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
         ) {
             Button(
                 onClick = { viewModel.rescan(sourceId) },
                 colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.FocusRing,
-                    contentColor = Color.Black,
-                    focusedContainerColor = NuvioColors.FocusRing,
-                    focusedContentColor = Color.Black
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.TextPrimary),
-                        shape = RoundedCornerShape(50)
-                    )
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
                 )
-            ) { Text("Rescan now", color = Color.Black) }
+            ) {
+                Text("Rescan now")
+            }
             Button(
                 onClick = { onNavigateToManualMatch(sourceId) },
                 colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.Background,
-                    contentColor = NuvioColors.TextPrimary,
-                    focusedContainerColor = NuvioColors.Background,
-                    focusedContentColor = NuvioColors.TextPrimary
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                        shape = RoundedCornerShape(50)
-                    )
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
                 )
-            ) { Text("Manual match", color = NuvioColors.TextPrimary) }
+            ) {
+                Text("Manual match")
+            }
             Button(
-                onClick = {
-                    viewModel.removeSource(sourceId)
-                    onBackPress()
-                },
+                onClick = { viewModel.removeSource(sourceId) { onBackPress() } },
                 colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.Background,
-                    contentColor = Color(0xFFFF6B6B),
-                    focusedContainerColor = NuvioColors.Background,
-                    focusedContentColor = Color(0xFFFF6B6B)
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                        shape = RoundedCornerShape(50)
-                    )
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.Error
                 )
-            ) { Text("Remove source", color = Color(0xFFFF6B6B)) }
+            ) {
+                Text("Remove source")
+            }
         }
     }
 }
 
-private fun formatProgress(progress: com.nuvio.tv.data.locallibrary.LocalLibraryManager.ScanProgress): String =
+private fun formatProgress(progress: LocalLibraryManager.ScanProgress): String =
     when (progress) {
-        is com.nuvio.tv.data.locallibrary.LocalLibraryManager.ScanProgress.Idle ->
-            "Idle (${progress.itemCount} items)"
-        is com.nuvio.tv.data.locallibrary.LocalLibraryManager.ScanProgress.Scanning ->
-            "Scanning… ${progress.itemsFound} found so far"
-        is com.nuvio.tv.data.locallibrary.LocalLibraryManager.ScanProgress.Matching ->
-            "Matching ${progress.matched}/${progress.total}"
-        is com.nuvio.tv.data.locallibrary.LocalLibraryManager.ScanProgress.Failed ->
-            "Failed: ${progress.reason}"
+        is LocalLibraryManager.ScanProgress.Idle -> "Idle (${progress.itemCount} items)"
+        is LocalLibraryManager.ScanProgress.Scanning -> "Scanning… ${progress.itemsFound} found so far"
+        is LocalLibraryManager.ScanProgress.Matching -> "Matching ${progress.matched}/${progress.total}"
+        is LocalLibraryManager.ScanProgress.Failed -> "Failed: ${progress.reason}"
     }
