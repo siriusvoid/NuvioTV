@@ -312,7 +312,10 @@
     <string name="tracking_accounts_title">Аккаунты</string>
     <string name="tracking_accounts_subtitle">Подключение и управление сервисами отслеживания</string>
     <string name="tracking_sources_title">Источники</string>
-    <string name="tracking_sources_subtitle">Выберите, откуда Nuvio считывает вашу библиотеку и прогресс просмотра. Воспроизведение скробблится во все подключённые сервисы.</string>
+    <string name="tracking_sources_subtitle">Выберите, откуда Nuvio считывает вашу библиотеку и прогресс просмотра и отправлять ли данные в подключённые сервисы.</string>
+    <string name="tracking_scrobbling_title">Скробблинг</string>
+    <string name="tracking_scrobbling_subtitle">Отправлять воспроизведение и отметки о просмотре в подключённые сервисы отслеживания</string>
+    <string name="tracking_scrobbling_connect_first">Сначала подключите Trakt или Simkl</string>
     <string name="tracking_trakt_features_title">Функции Trakt</string>
     <string name="tracking_trakt_features_subtitle">История, рецензии и рекомендации, специфичные для Trakt</string>
     <string name="tracking_simkl_features_title">Функции Simkl</string>
