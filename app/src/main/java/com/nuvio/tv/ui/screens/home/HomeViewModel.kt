@@ -733,7 +733,8 @@ class HomeViewModel @Inject constructor(
             val items = mergeContinueWatchingItems(
                 inProgressItems = inProgressItems,
                 nextUpItems = nextUpItems,
-                mode = sortMode
+                mode = sortMode,
+                showIdSiblings = cwLastShowIdSiblings
             )
             if (items.isNotEmpty()) {
                 val (mainItems, upcomingOnly) = splitUpcomingItems(items, sortMode)
