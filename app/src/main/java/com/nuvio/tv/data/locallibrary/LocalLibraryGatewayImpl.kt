@@ -30,9 +30,14 @@ import com.nuvio.tv.domain.repository.LocalLibraryGateway.Companion.LOCAL_ID_PRE
 import com.nuvio.tv.domain.repository.LocalLibraryGateway.Companion.SYNTHETIC_BASE_URL
 import com.nuvio.tv.domain.repository.MetaRepository
 import dagger.Lazy
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -207,10 +212,17 @@ class LocalLibraryGatewayImpl @Inject constructor(
         )
     }
 
+    /**
+     * One preview per distinct title in [source] of [type]. Each title is an
+     * independent metadata lookup, so they run under a small permit pool and the
+     * row takes about as long as its slowest few rather than the sum of all of
+     * them. Order is preserved, and a title whose lookup fails is dropped on its
+     * own instead of taking the row down with it.
+     */
     private suspend fun buildPreviewsForSource(
         source: LocalLibrarySourceConfig,
         type: ContentType
-    ): List<MetaPreview> {
+    ): List<MetaPreview> = coroutineScope {
         val items = index.load(source.id)
         val matches = overrideStore.matches.first()
         val matched = items.mapNotNull { item ->
@@ -220,9 +232,17 @@ class LocalLibraryGatewayImpl @Inject constructor(
         }
         // Dedupe by tmdbId (multiple files of same movie / episodes of same series)
         val byTmdb = matched.groupBy { (_, match) -> match.tmdbId }
-        return byTmdb.mapNotNull { (tmdbId, group) ->
-            buildPreview(tmdbId, type, group.first().first)
-        }
+        val permits = Semaphore(PREVIEW_LOOKUP_CONCURRENCY)
+        byTmdb.map { (tmdbId, group) ->
+            val sample = group.first().first
+            async {
+                permits.withPermit {
+                    runCatching { buildPreview(tmdbId, type, sample) }
+                        .onFailure { Log.w(TAG, "preview lookup failed for tmdbId=$tmdbId", it) }
+                        .getOrNull()
+                }
+            }
+        }.awaitAll().filterNotNull()
     }
 
     private suspend fun buildPreview(
@@ -349,18 +369,21 @@ class LocalLibraryGatewayImpl @Inject constructor(
      */
     private suspend fun fetchAddonMeta(tmdbId: Int, type: ContentType): Meta? {
         val typeStr = if (type == ContentType.MOVIE) "movie" else "series"
-        val candidateIds = buildList {
-            add("tmdb:$tmdbId")
-            runCatching { tmdbService.tmdbToImdb(tmdbId, typeStr) }.getOrNull()?.let { add(it) }
-        }
-        for (id in candidateIds) {
+
+        suspend fun lookup(id: String): Meta? {
             val result = runCatching {
                 metaRepository.get().getMetaFromAllAddons(typeStr, id)
                     .first { it !is NetworkResult.Loading }
             }.getOrNull()
-            (result as? NetworkResult.Success)?.data?.let { return it }
+            return (result as? NetworkResult.Success)?.data
         }
-        return null
+
+        lookup("tmdb:$tmdbId")?.let { return it }
+        // The IMDB mapping costs its own TMDB round trip, so it is resolved only
+        // once the TMDB id has found no addon — which is every title when the
+        // installed metadata addon accepts `tmdb:` ids.
+        val imdbId = runCatching { tmdbService.tmdbToImdb(tmdbId, typeStr) }.getOrNull() ?: return null
+        return lookup(imdbId)
     }
 
     private fun buildMeta(
@@ -489,6 +512,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
     companion object {
         private const val TAG = "LocalLibraryGateway"
         private const val ADDON_NAME = "Local Library"
+        private const val PREVIEW_LOOKUP_CONCURRENCY = 4
     }
 
     /** Catalog id codec: `local_<sourceId>_<movie|series>` */
