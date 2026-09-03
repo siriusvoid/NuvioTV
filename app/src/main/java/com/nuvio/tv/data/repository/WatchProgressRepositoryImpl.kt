@@ -954,6 +954,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         items: Collection<TrackingHistoryItem>
     ) {
         if (items.isEmpty()) return
+        if (!traktSettingsDataStore.scrobblingEnabled.first()) return
         val connectedIds = connectedProgressProviders().mapTo(mutableSetOf()) { it.providerId }
         supervisorScope {
             trackingHistoryWriters.writers()
@@ -975,6 +976,7 @@ class WatchProgressRepositoryImpl @Inject constructor(
         items: Collection<TrackingMediaReference>
     ) {
         if (items.isEmpty()) return
+        if (!traktSettingsDataStore.scrobblingEnabled.first()) return
         val connectedIds = connectedProgressProviders().mapTo(mutableSetOf()) { it.providerId }
         supervisorScope {
             trackingHistoryWriters.writers()

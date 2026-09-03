@@ -29,6 +29,7 @@ data class TrackingSettingsUiState(
     val librarySourceMode: LibrarySourceMode = LibrarySourceMode.LOCAL,
     val connectedProviderIds: Set<TrackingProviderId> = emptySet(),
     val simklAnimeIdPreference: SimklAnimeIdPreference = SimklAnimeIdPreference.DEFAULT,
+    val scrobblingEnabled: Boolean = TraktSettingsDataStore.DEFAULT_SCROBBLING_ENABLED,
     val isReady: Boolean = false
 ) {
     val availableWatchProgressSources: List<WatchProgressSource>
@@ -73,6 +74,8 @@ class TrackingSettingsViewModel @Inject constructor(
                     simklAnimeIdPreference = animeIdPref,
                     isReady = true
                 )
+            }.combine(settingsDataStore.scrobblingEnabled) { state, scrobblingEnabled ->
+                state.copy(scrobblingEnabled = scrobblingEnabled)
             }.collect { state ->
                 _uiState.value = state
                 sourceController.reconcileConnectedProviders(state.connectedProviderIds)
@@ -89,6 +92,12 @@ class TrackingSettingsViewModel @Inject constructor(
     fun selectLibrarySourceMode(mode: LibrarySourceMode) {
         viewModelScope.launch {
             sourceController.selectLibrarySourceMode(mode)
+        }
+    }
+
+    fun setScrobblingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setScrobblingEnabled(enabled)
         }
     }
 

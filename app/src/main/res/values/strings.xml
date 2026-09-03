@@ -442,7 +442,10 @@
     <string name="tracking_accounts_title">Accounts</string>
     <string name="tracking_accounts_subtitle">Connect and manage tracking services</string>
     <string name="tracking_sources_title">Sources</string>
-    <string name="tracking_sources_subtitle">Choose where Nuvio reads your library and watch progress. Playback scrobbles to every connected service.</string>
+    <string name="tracking_sources_subtitle">Choose where Nuvio reads your library and watch progress, and whether it writes back to connected services.</string>
+    <string name="tracking_scrobbling_title">Scrobbler</string>
+    <string name="tracking_scrobbling_subtitle">Send playback and watched marks to your connected tracking services</string>
+    <string name="tracking_scrobbling_connect_first">Connect Trakt or Simkl first</string>
     <string name="tracking_trakt_features_title">Trakt features</string>
     <string name="tracking_trakt_features_subtitle">Trakt-specific history, reviews, and recommendations</string>
     <string name="tracking_simkl_features_title">Simkl features</string>
