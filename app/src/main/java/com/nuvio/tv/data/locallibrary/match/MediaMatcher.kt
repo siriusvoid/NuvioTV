@@ -3,6 +3,7 @@ package com.nuvio.tv.data.locallibrary.match
 import android.util.Log
 import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.data.local.MatchOverrideStore
+import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.remote.api.TmdbApi
 import com.nuvio.tv.data.remote.api.TmdbDiscoverResult
 import com.nuvio.tv.domain.model.ContentType
@@ -27,8 +28,21 @@ import kotlin.math.min
 @Singleton
 class MediaMatcher @Inject constructor(
     private val tmdbApi: TmdbApi,
+    private val tmdbService: TmdbService,
     private val overrideStore: MatchOverrideStore
 ) {
+
+    /**
+     * IMDB id for [tmdbId], or null when TMDB has none. Resolved here so it is
+     * stored with the match and never has to be looked up at read time.
+     * [TmdbService] caches and de-duplicates, so a rescan costs one call per show.
+     */
+    internal suspend fun resolveImdbId(tmdbId: Int, contentType: ContentType): String? {
+        val mediaType = if (contentType == ContentType.MOVIE) "movie" else "tv"
+        return runCatching { tmdbService.tmdbToImdb(tmdbId, mediaType) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
 
     /**
      * Returns the resolved match for [item] or null if confidence falls below
@@ -44,13 +58,15 @@ class MediaMatcher @Inject constructor(
             if (cached?.userSet == true) return@withContext cached
 
             item.tmdbHintId?.let { hintId ->
+                val hintType = item.typeHint.takeIf { it != ContentType.UNKNOWN } ?: ContentType.MOVIE
                 val match = LocalMatch(
                     itemKey = item.itemKey,
                     tmdbId = hintId,
-                    contentType = item.typeHint.takeIf { it != ContentType.UNKNOWN } ?: ContentType.MOVIE,
+                    contentType = hintType,
                     season = item.parsedSeason,
                     episode = item.parsedEpisode,
                     userSet = false,
+                    imdbId = resolveImdbId(hintId, hintType),
                     score = 1f
                 )
                 overrideStore.put(match)
@@ -89,6 +105,7 @@ class MediaMatcher @Inject constructor(
                 season = item.parsedSeason ?: parsed.season,
                 episode = item.parsedEpisode ?: parsed.episode,
                 userSet = false,
+                imdbId = resolveImdbId(best.first.id, type),
                 score = best.second
             )
             overrideStore.put(match)
@@ -125,6 +142,7 @@ class MediaMatcher @Inject constructor(
                 season = season ?: item.parsedSeason,
                 episode = episode ?: item.parsedEpisode,
                 userSet = true,
+                imdbId = resolveImdbId(tmdbId, contentType),
                 score = 1f
             )
         )

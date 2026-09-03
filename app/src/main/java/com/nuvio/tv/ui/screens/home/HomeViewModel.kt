@@ -81,7 +81,8 @@ class HomeViewModel @Inject constructor(
     internal val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     internal val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
-    internal val tvRecommendationManager: TvRecommendationManager
+    internal val tvRecommendationManager: TvRecommendationManager,
+    internal val localLibraryGateway: com.nuvio.tv.domain.repository.LocalLibraryGateway
 ) : ViewModel() {
     companion object {
         internal const val TAG = "HomeViewModel"
@@ -264,6 +265,15 @@ class HomeViewModel @Inject constructor(
     /** Cached show ID siblings from the last badge evaluation cycle (for anime ID expansion). */
     @Volatile
     internal var cwLastShowIdSiblings: Map<String, Set<String>> = emptyMap()
+
+    /**
+     * TMDB → IMDB for matched local library items, read from disk at the start of
+     * the CW pipeline. Unlike the sibling map above it needs no remote sync, so it
+     * is populated before the first merge and local entries reconcile with their
+     * tracker counterparts on the very first frame.
+     */
+    @Volatile
+    internal var cwLocalImdbIds: Map<Int, String> = emptyMap()
     internal val cwTmdbIdCache: MutableMap<String, String?> = createLruMap(MAX_CW_CACHE_SIZE)
     internal val cwNextUpResolutionCache = Collections.synchronizedMap(mutableMapOf<String, NextUpResolution?>())
     internal val cwNextUpNegativeCacheTimestamps = ConcurrentHashMap<String, Long>()
@@ -384,6 +394,7 @@ class HomeViewModel @Inject constructor(
                     cwEnrichedInProgressOverlay.clear()
                     cwLastBadgeEpisodeKeys = emptySet()
                     cwLastShowIdSiblings = emptyMap()
+                    cwLocalImdbIds = emptyMap()
                     _uiState.update {
                         it.copy(layoutPreferencesReady = false, continueWatchingItems = emptyList())
                     }
@@ -438,6 +449,7 @@ class HomeViewModel @Inject constructor(
         cwEnrichedInProgressOverlay.clear()
         cwLastBadgeEpisodeKeys = emptySet()
         cwLastShowIdSiblings = emptyMap()
+        cwLocalImdbIds = emptyMap()
         watchedSeriesStateHolder.clearValidationState()
         _uiState.update { it.copy(continueWatchingItems = emptyList(), upcomingItems = emptyList()) }
         // Bump trigger so the pipeline's collectLatest restarts with fresh state.
@@ -730,11 +742,18 @@ class HomeViewModel @Inject constructor(
                 )
             }
             val sortMode = layoutPreferenceDataStore.continueWatchingSortMode.first()
+            // This restore path is usually the first CW render after a cold start,
+            // so the mapping is read here too rather than waiting on the pipeline.
+            if (cwLocalImdbIds.isEmpty()) {
+                cwLocalImdbIds = runCatching { localLibraryGateway.resolvedImdbIds() }
+                    .getOrDefault(emptyMap())
+            }
             val items = mergeContinueWatchingItems(
                 inProgressItems = inProgressItems,
                 nextUpItems = nextUpItems,
                 mode = sortMode,
-                showIdSiblings = cwLastShowIdSiblings
+                showIdSiblings = cwLastShowIdSiblings,
+                localImdbIds = cwLocalImdbIds
             )
             if (items.isNotEmpty()) {
                 val (mainItems, upcomingOnly) = splitUpcomingItems(items, sortMode)

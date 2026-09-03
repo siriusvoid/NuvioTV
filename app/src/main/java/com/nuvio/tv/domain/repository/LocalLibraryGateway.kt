@@ -27,6 +27,14 @@ interface LocalLibraryGateway {
     /** Whether [id] refers to a local-library item (catalog item or meta id). */
     fun isLocalId(id: String?): Boolean
 
+    /**
+     * TMDB id → IMDB id for matched local items that have one, read straight from
+     * the persisted matches. Lets callers reconcile a local id with a tracker's
+     * IMDB-keyed entry immediately, with no network and no dependency on a remote
+     * sync having completed first.
+     */
+    suspend fun resolvedImdbIds(): Map<Int, String>
+
     suspend fun catalog(catalogId: String, skip: Int, skipStep: Int): NetworkResult<CatalogRow>
 
     suspend fun meta(type: String, id: String): NetworkResult<Meta>

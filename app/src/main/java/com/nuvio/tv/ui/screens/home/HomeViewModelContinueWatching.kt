@@ -543,12 +543,20 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                     )
                 }
                 if (inProgressOnly.isNotEmpty() || cachedNextUpItems.isNotEmpty()) {
+                    // Read before the first merge: this comes off disk with no remote
+                    // sync behind it, so local entries reconcile with their tracker
+                    // counterparts on the first frame instead of after Trakt lands.
+                    if (cwLocalImdbIds.isEmpty()) {
+                        cwLocalImdbIds = runCatching { localLibraryGateway.resolvedImdbIds() }
+                            .getOrDefault(emptyMap())
+                    }
                     val initialItems = applyContinueWatchingEnrichmentOverlay(
                         mergeContinueWatchingItems(
                             inProgressItems = inProgressOnly,
                             nextUpItems = cachedNextUpItems,
                             mode = continueWatchingSortMode,
-                            showIdSiblings = cwLastShowIdSiblings
+                            showIdSiblings = cwLastShowIdSiblings,
+                            localImdbIds = cwLocalImdbIds
                         )
                     )
                     val (mainItems, upcomingOnly) = splitUpcomingItems(initialItems, continueWatchingSortMode)
@@ -639,7 +647,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                         inProgressItems = inProgressOnly,
                                         nextUpItems = cachedPartialNextUp + retainedCached,
                                         mode = continueWatchingSortMode,
-                                        showIdSiblings = cwLastShowIdSiblings
+                                        showIdSiblings = cwLastShowIdSiblings,
+                                        localImdbIds = cwLocalImdbIds
                                     )
                                 )
                                 val (partialMain, partialUpcoming) = splitUpcomingItems(partialItems, continueWatchingSortMode)
@@ -1073,7 +1082,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                             } else nextUp
                         },
                         mode = continueWatchingSortMode,
-                        showIdSiblings = cwLastShowIdSiblings
+                        showIdSiblings = cwLastShowIdSiblings,
+                        localImdbIds = cwLocalImdbIds
                     )
                 )
                 val (normalMain, normalUpcoming) = splitUpcomingItems(normalItems, continueWatchingSortMode)
@@ -1750,7 +1760,8 @@ internal fun sortContinueWatchingItems(
  */
 private fun continueWatchingDedupKey(
     contentId: String,
-    showIdSiblings: Map<String, Set<String>>
+    showIdSiblings: Map<String, Set<String>>,
+    localImdbIds: Map<Int, String> = emptyMap()
 ): String {
     if (!contentId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX)) return contentId
     val tmdbId = contentId.removePrefix(LocalLibraryGateway.LOCAL_ID_PREFIX)
@@ -1758,7 +1769,14 @@ private fun continueWatchingDedupKey(
         .getOrNull(1)
         ?.takeIf { it.isNotBlank() }
         ?: return contentId
+    // Preferred: the id stored with the match. It is on disk from matching time,
+    // so it is here for the first frame after a cold start or profile switch.
+    tmdbId.toIntOrNull()?.let { numericTmdbId ->
+        localImdbIds[numericTmdbId]?.takeIf { it.isNotBlank() }?.let { return it }
+    }
     val tmdbKey = "tmdb:$tmdbId"
+    // Fallback for matches stored before the id was recorded: Trakt's sibling map,
+    // which only helps once a remote sync has landed.
     val siblings = showIdSiblings[tmdbKey]
     if (siblings != null && "__ambiguous__" !in siblings) {
         siblings.firstOrNull { it.startsWith("tt") }?.let { return it }
@@ -1770,33 +1788,54 @@ internal fun mergeContinueWatchingItems(
     inProgressItems: List<ContinueWatchingItem.InProgress>,
     nextUpItems: List<ContinueWatchingItem.NextUp>,
     mode: ContinueWatchingSortMode = ContinueWatchingSortMode.DEFAULT,
-    showIdSiblings: Map<String, Set<String>> = emptyMap()
+    showIdSiblings: Map<String, Set<String>> = emptyMap(),
+    localImdbIds: Map<Int, String> = emptyMap()
 ): List<ContinueWatchingItem> {
     val allInProgressIds = inProgressItems
         .asSequence()
         .map { it.progress }
         .filter { isSeriesTypeCW(it.contentType) }
-        .map { continueWatchingDedupKey(it.contentId, showIdSiblings) }
+        .map { continueWatchingDedupKey(it.contentId, showIdSiblings, localImdbIds) }
         .filter { it.isNotBlank() }
         .toSet()
 
     val filteredNextUpItems = nextUpItems.filter { item ->
-        continueWatchingDedupKey(item.info.contentId, showIdSiblings) !in allInProgressIds
+        // A local next-up entry stays even when a tracker's in-progress entry
+        // covers the same show; the dedup below then drops that unplayable
+        // counterpart rather than this one.
+        item.info.contentId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX) ||
+            continueWatchingDedupKey(item.info.contentId, showIdSiblings, localImdbIds) !in allInProgressIds
     }
 
     val combined = inProgressItems + filteredNextUpItems
 
+    // Of two entries for one show, the local-library one is the entry that can
+    // actually play: its files are reachable only through the "nuvio-local:" id,
+    // and the synthetic addon declares that prefix, so a tracker's copy of the
+    // same show (an IMDB/TMDB id) resolves to no stream addon at all. Collapsing
+    // them therefore has to keep the local entry, whatever the arrival order.
+    val localKeys = combined
+        .asSequence()
+        .map { it.continueWatchingContentId() }
+        .filter { it.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX) }
+        .map { continueWatchingDedupKey(it, showIdSiblings, localImdbIds) }
+        .toSet()
+
     val seen = mutableSetOf<String>()
     val deduplicated = combined.filter { item ->
-        val contentId = when (item) {
-            is ContinueWatchingItem.InProgress -> item.progress.contentId
-            is ContinueWatchingItem.NextUp -> item.info.contentId
-        }
-        val key = continueWatchingDedupKey(contentId, showIdSiblings)
-        key.isBlank() || seen.add(key)
+        val contentId = item.continueWatchingContentId()
+        val key = continueWatchingDedupKey(contentId, showIdSiblings, localImdbIds)
+        val supersededByLocal = !contentId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX) &&
+            key in localKeys
+        !supersededByLocal && (key.isBlank() || seen.add(key))
     }
 
     return sortContinueWatchingItems(deduplicated, mode)
+}
+
+private fun ContinueWatchingItem.continueWatchingContentId(): String = when (this) {
+    is ContinueWatchingItem.InProgress -> progress.contentId
+    is ContinueWatchingItem.NextUp -> info.contentId
 }
 
 /**
