@@ -14,6 +14,7 @@ import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.normalizeLanguageCode
 import com.nuvio.tv.domain.model.countryToLanguageCode
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.ui.util.parseEpisodeReleaseDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -546,7 +547,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                         mergeContinueWatchingItems(
                             inProgressItems = inProgressOnly,
                             nextUpItems = cachedNextUpItems,
-                            mode = continueWatchingSortMode
+                            mode = continueWatchingSortMode,
+                            showIdSiblings = cwLastShowIdSiblings
                         )
                     )
                     val (mainItems, upcomingOnly) = splitUpcomingItems(initialItems, continueWatchingSortMode)
@@ -636,7 +638,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                     mergeContinueWatchingItems(
                                         inProgressItems = inProgressOnly,
                                         nextUpItems = cachedPartialNextUp + retainedCached,
-                                        mode = continueWatchingSortMode
+                                        mode = continueWatchingSortMode,
+                                        showIdSiblings = cwLastShowIdSiblings
                                     )
                                 )
                                 val (partialMain, partialUpcoming) = splitUpcomingItems(partialItems, continueWatchingSortMode)
@@ -1069,7 +1072,8 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                                 ))
                             } else nextUp
                         },
-                        mode = continueWatchingSortMode
+                        mode = continueWatchingSortMode,
+                        showIdSiblings = cwLastShowIdSiblings
                     )
                 )
                 val (normalMain, normalUpcoming) = splitUpcomingItems(normalItems, continueWatchingSortMode)
@@ -1733,21 +1737,51 @@ internal fun sortContinueWatchingItems(
     }
 }
 
+/**
+ * Dedup key for one continue-watching card.
+ *
+ * Local-library items carry their own id namespace ("nuvio-local:<type>:<tmdbId>"),
+ * so a show watched on-device and synced back from a tracker arrives under two
+ * different content ids and survives a plain string dedup as two cards. Trakt's
+ * sibling map already links IMDB / TMDB / Trakt ids for one show, so a local id is
+ * keyed on whichever sibling the tracker itself uses. An ambiguous entry (one IMDB
+ * shared by several Trakt shows) keeps its own key so anthology seasons stay apart,
+ * and every non-local id is returned untouched.
+ */
+private fun continueWatchingDedupKey(
+    contentId: String,
+    showIdSiblings: Map<String, Set<String>>
+): String {
+    if (!contentId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX)) return contentId
+    val tmdbId = contentId.removePrefix(LocalLibraryGateway.LOCAL_ID_PREFIX)
+        .split(":")
+        .getOrNull(1)
+        ?.takeIf { it.isNotBlank() }
+        ?: return contentId
+    val tmdbKey = "tmdb:$tmdbId"
+    val siblings = showIdSiblings[tmdbKey]
+    if (siblings != null && "__ambiguous__" !in siblings) {
+        siblings.firstOrNull { it.startsWith("tt") }?.let { return it }
+    }
+    return tmdbKey
+}
+
 internal fun mergeContinueWatchingItems(
     inProgressItems: List<ContinueWatchingItem.InProgress>,
     nextUpItems: List<ContinueWatchingItem.NextUp>,
-    mode: ContinueWatchingSortMode = ContinueWatchingSortMode.DEFAULT
+    mode: ContinueWatchingSortMode = ContinueWatchingSortMode.DEFAULT,
+    showIdSiblings: Map<String, Set<String>> = emptyMap()
 ): List<ContinueWatchingItem> {
     val allInProgressIds = inProgressItems
         .asSequence()
         .map { it.progress }
         .filter { isSeriesTypeCW(it.contentType) }
-        .map { it.contentId }
+        .map { continueWatchingDedupKey(it.contentId, showIdSiblings) }
         .filter { it.isNotBlank() }
         .toSet()
 
     val filteredNextUpItems = nextUpItems.filter { item ->
-        item.info.contentId !in allInProgressIds
+        continueWatchingDedupKey(item.info.contentId, showIdSiblings) !in allInProgressIds
     }
 
     val combined = inProgressItems + filteredNextUpItems
@@ -1758,7 +1792,8 @@ internal fun mergeContinueWatchingItems(
             is ContinueWatchingItem.InProgress -> item.progress.contentId
             is ContinueWatchingItem.NextUp -> item.info.contentId
         }
-        contentId.isBlank() || seen.add(contentId)
+        val key = continueWatchingDedupKey(contentId, showIdSiblings)
+        key.isBlank() || seen.add(key)
     }
 
     return sortContinueWatchingItems(deduplicated, mode)
