@@ -68,8 +68,12 @@ class LocalLibrarySettingsViewModel @Inject constructor(
         viewModelScope.launch { manager.setEnabled(sourceId, enabled) }
     }
 
-    fun removeSource(sourceId: String) {
-        viewModelScope.launch { manager.removeSource(sourceId) }
+    /** [onRemoved] runs after the delete lands — see [pickCandidate] on why callers wait. */
+    fun removeSource(sourceId: String, onRemoved: () -> Unit = {}) {
+        viewModelScope.launch {
+            manager.removeSource(sourceId)
+            onRemoved()
+        }
     }
 
     fun loadUnmatched(sourceId: String) {
@@ -84,18 +88,31 @@ class LocalLibrarySettingsViewModel @Inject constructor(
     fun parsedContentType(item: ScannedItem): ContentType =
         FilenameParser.parse(item.fileName).contentType
 
-    fun pickCandidate(item: ScannedItem, candidate: TmdbDiscoverResult, contentType: ContentType) {
+    /** [onSaved] runs once written; navigating sooner cancels this viewModelScope mid-write. */
+    fun pickCandidate(
+        item: ScannedItem,
+        candidate: TmdbDiscoverResult,
+        contentType: ContentType,
+        onSaved: () -> Unit = {}
+    ) {
         viewModelScope.launch {
             matcher.setOverride(item, candidate.id, contentType)
             _unmatched.value = manager.unmatchedItems(item.sourceId)
+            onSaved()
         }
     }
 
     /** Applies the picked match to every episode in the item's folder (one show). */
-    fun matchFolder(item: ScannedItem, candidate: TmdbDiscoverResult, contentType: ContentType) {
+    fun matchFolder(
+        item: ScannedItem,
+        candidate: TmdbDiscoverResult,
+        contentType: ContentType,
+        onSaved: () -> Unit = {}
+    ) {
         viewModelScope.launch {
             manager.matchFolder(item, candidate.id, contentType)
             _unmatched.value = manager.unmatchedItems(item.sourceId)
+            onSaved()
         }
     }
 
