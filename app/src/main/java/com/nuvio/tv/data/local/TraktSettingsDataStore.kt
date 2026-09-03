@@ -50,6 +50,7 @@ class TraktSettingsDataStore @Inject constructor(
         const val DEFAULT_CONTINUE_WATCHING_DAYS_CAP = 60
         const val DEFAULT_SHOW_UNAIRED_NEXT_UP = true
         const val DEFAULT_SHOW_META_COMMENTS = true
+        const val DEFAULT_SCROBBLING_ENABLED = true
         val DEFAULT_WATCH_PROGRESS_SOURCE = WatchProgressSource.TRAKT
         val DEFAULT_LIBRARY_SOURCE_MODE = LibrarySourceMode.TRAKT
         val DEFAULT_MORE_LIKE_THIS_SOURCE = MoreLikeThisSourcePreference.TRAKT
@@ -71,6 +72,7 @@ class TraktSettingsDataStore @Inject constructor(
     private val librarySourceModeKey = stringPreferencesKey("library_source_mode")
     private val moreLikeThisSourceKey = stringPreferencesKey("more_like_this_source")
     private val simklAnimeIdPreferenceKey = stringPreferencesKey("simkl_anime_id_preference")
+    private val scrobblingEnabledKey = booleanPreferencesKey("scrobbling_enabled")
 
     val continueWatchingDaysCap: Flow<Int> = profileManager.activeProfileId.flatMapLatest { pid ->
         factory.get(pid, FEATURE).data.map { prefs ->
@@ -212,6 +214,24 @@ class TraktSettingsDataStore @Inject constructor(
     suspend fun setSimklAnimeIdPreference(preference: SimklAnimeIdPreference) {
         store().edit { prefs ->
             prefs[simklAnimeIdPreferenceKey] = preference.name
+        }
+    }
+
+    /**
+     * Whether Nuvio may write to connected tracking providers: playback scrobbles and
+     * watched marks alike. Reads are unaffected - library and watch progress still come
+     * from the configured source, and list/watchlist writes stay under the library
+     * source setting.
+     */
+    val scrobblingEnabled: Flow<Boolean> = profileManager.activeProfileId.flatMapLatest { pid ->
+        factory.get(pid, FEATURE).data.map { prefs ->
+            prefs[scrobblingEnabledKey] ?: DEFAULT_SCROBBLING_ENABLED
+        }
+    }
+
+    suspend fun setScrobblingEnabled(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[scrobblingEnabledKey] = enabled
         }
     }
 }
