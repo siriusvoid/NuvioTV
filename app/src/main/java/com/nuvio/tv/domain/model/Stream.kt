@@ -26,7 +26,8 @@ data class Stream(
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
     val clientResolve: StreamClientResolve? = null,
     val debridCacheStatus: StreamDebridCacheStatus? = null,
-    val badges: List<StreamBadge> = emptyList()
+    val badges: List<StreamBadge> = emptyList(),
+    val subtitles: List<Subtitle> = emptyList()
 ) {
     /**
      * Returns the primary stream source URL

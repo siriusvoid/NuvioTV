@@ -21,9 +21,9 @@ internal fun PlayerRuntimeController.startInitialPlaybackIfNeeded() {
     // (from CW, Details, or next-episode) can reuse the same source group.
     val bg = navigationArgs.bingeGroup
     val cid = contentId
-    if (bg != null && cid != null) {
+    if (cid != null) {
         scope.launch(kotlinx.coroutines.NonCancellable) {
-            bingeGroupCacheDataStore.save(cid, bg)
+            bingeGroupCacheDataStore.replace(cid, bg)
         }
     }
 
@@ -37,7 +37,11 @@ internal fun PlayerRuntimeController.startInitialPlaybackIfNeeded() {
             "S${currentSeason ?: "-"}E${currentEpisode ?: "-"} infoHash=${infoHash != null} " +
             "startFromBeginning=${navigationArgs.startFromBeginning} streamName=${streamName ?: "n/a"}"
     )
-    Log.d("PlayerStartup", "startInitialPlayback: infoHash=$infoHash, streamUrl=${initialStreamUrl.take(80)}")
+    Log.d(
+        "PlayerStartup",
+        "startInitialPlayback: infoHash=$infoHash host=${currentStreamUrl.safeStartupHost()} " +
+            "urlHash=${currentStreamUrl.hashCode().toUInt().toString(16)}"
+    )
     if (infoHash != null && !initialStreamUrl.startsWith("http")) {
         torrentStreamJob = scope.launch {
             try {

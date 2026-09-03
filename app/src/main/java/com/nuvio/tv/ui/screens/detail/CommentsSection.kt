@@ -504,7 +504,7 @@ private fun CommentCard(
         ),
         border = CardDefaults.border(
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = shape
             )
         ),
@@ -525,34 +525,40 @@ private fun CommentCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
-                if (review.review) {
-                    CommentChip(text = stringResource(R.string.detail_comments_badge_review))
-                }
-                if (review.hasSpoilerContent) {
-                    CommentChip(text = stringResource(R.string.detail_comments_badge_spoiler))
-                }
-                review.rating?.let { rating ->
-                    CommentChip(text = stringResource(R.string.detail_comments_badge_rating, rating))
-                }
+            if (review.review) {
+                CommentChip(text = stringResource(R.string.detail_comments_badge_review))
             }
 
             Text(
                 text = bodyText,
                 style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                color = NuvioTheme.colors.TextSecondary,
+                color = if (review.hasSpoilerContent) {
+                    NuvioTheme.colors.Warning
+                } else {
+                    NuvioTheme.colors.TextSecondary
+                },
                 maxLines = 5,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
 
-            Text(
-                text = stringResource(R.string.detail_comments_likes, review.likes),
-                style = MaterialTheme.typography.labelMedium,
-                color = NuvioTheme.colors.TextTertiary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)) {
+                review.rating?.let { rating ->
+                    Text(
+                        text = stringResource(R.string.detail_comments_badge_rating, rating),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NuvioTheme.colors.TextTertiary,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.detail_comments_likes, review.likes),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = NuvioTheme.colors.TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

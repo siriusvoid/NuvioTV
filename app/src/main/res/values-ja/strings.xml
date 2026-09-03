@@ -139,7 +139,9 @@
     <string name="continue_watching">視聴を続ける</string>
     <string name="cw_upcoming">近日公開</string>
     <string name="cw_next_up">次のエピソード</string>
+    <string name="cw_next_up_short">次</string>
     <string name="cw_new_episode">新着エピソード</string>
+    <string name="cw_new_episode_short">新着</string>
     <string name="cw_new_season">新シーズン</string>
     <string name="cw_resume">再開</string>
     <string name="cw_percent_watched">%1$d%% 視聴済み</string>
@@ -152,6 +154,14 @@
     <plurals name="cw_airs_in_days">
         <item quantity="one">%d日後に放送</item>
         <item quantity="other">%d日後に放送</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">今日</string>
+    <string name="cw_airs_tomorrow_short">明日</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">%d日後</item>
+        <item quantity="other">%d日後</item>
     </plurals>
     <string name="cw_action_go_to_details">詳細へ</string>
     <string name="cw_action_start_from_beginning">最初から再生</string>
@@ -513,11 +523,11 @@
     <string name="supporters_contributors_donate_copy">Nuvioは無料のオープンソースプロジェクトです。サポートしたい方は、開発・インフラの維持にご協力いただけます</string>
     <string name="supporters_contributors_donation_progress_title">今月のサーバー &amp; メンテナンス</string>
     <string name="supporters_contributors_donation_progress_complete">達成済み。追加のサポートは開発に充てられます。</string>
-    <string name="supporters_contributors_donation_progress_remaining">100%% を超えると、追加のサポートは開発に充てられます。</string>
+    <string name="supporters_contributors_donation_progress_remaining">100% を超えると、追加のサポートは開発に充てられます。</string>
     <string name="supporters_contributors_loading_donation_progress">資金調達の進捗を読み込み中…</string>
     <string name="supporters_contributors_donate_button">Nuvioに寄付</string>
     <string name="supporters_contributors_qr_title">QRをスキャンして寄付</string>
-    <string name="supporters_contributors_qr_subtitle">スマートフォンでリンクを開き、Ko-fiでNuvioをサポート</string>
+    <string name="supporters_contributors_qr_subtitle">スマートフォンでリンクを開いてNuvioをサポート</string>
     <string name="supporters_contributors_qr_hint">カメラをQRコードに向けるか、下のボタンを使用してください</string>
     <string name="supporters_contributors_back_button">詳細に戻る</string>
     <string name="supporters_tab">サポーター</string>
@@ -630,7 +640,6 @@
     <string name="audio_decoder_prefer_app">アプリデコーダーを優先（FFmpeg）</string>
     <string name="audio_decoder_priority">デコーダー優先度</string>
     <string name="audio_enable_downmix_title">ダウンミックスを有効にする</string>
-    <string name="audio_enable_downmix_subtitle">FFmpegダウンミックスパスを使用します。無効にすると、以前のAndroid/デバイスパスに従います。</string>
     <string name="audio_tunneled">トンネル再生</string>
     <string name="audio_tunneled_sub">ハードウェアレベルの音声/映像同期。一部のAndroid TVデバイスで再生を改善する可能性があります</string>
     <string name="audio_force_optical_passthrough">AC-3トランスコードを強制（光学/SPDIF）</string>
@@ -724,13 +733,6 @@
     <string name="sub_org_none_desc">デフォルトのアドオン結果順で字幕を表示</string>
     <string name="sub_org_by_lang_desc">言語別に字幕をグループ化</string>
     <string name="sub_org_by_addon_desc">アドオンソース別に字幕をグループ化</string>
-    <string name="sub_startup_mode_title">アドオン字幕の読み込み</string>
-    <string name="sub_startup_mode_fast">高速起動</string>
-    <string name="sub_startup_mode_preferred">優先言語</string>
-    <string name="sub_startup_mode_all">すべてのアドオン字幕</string>
-    <string name="sub_startup_mode_fast_desc">すぐに再生を開始。アドオン字幕の選択時にプレーヤーが一度再読み込みされる場合があります</string>
-    <string name="sub_startup_mode_preferred_desc">再生前にアドオン字幕を取得して優先・第2言語トラックを添付</string>
-    <string name="sub_startup_mode_all_desc">再生前にすべてのアドオン字幕を取得して添付。最も起動が遅い</string>
 
     <string name="autoplay_reuse_last_link">最後のリンクを再利用</string>
     <string name="autoplay_reuse_last_link_sub">キャッシュが有効な間、同じ映画/エピソードの最後に機能したストリームを自動再生</string>
@@ -1732,11 +1734,9 @@
     <string name="auth_signin_qr_btn">QRで続ける</string>
 
     <string name="auth_qr_title">QRでサインイン</string>
-    <string name="auth_qr_account_login">アカウントログイン</string>
     <string name="auth_qr_finishing">サインインを完了中\u2026</string>
     <string name="auth_qr_code_label">コード: %1$s</string>
     <string name="auth_qr_expires">有効期限: %1$s</string>
-    <string name="auth_qr_phone_hint">スマートフォンを使ってメール/パスワードでサインイン。TVはQRからのログインのみ対応</string>
     <string name="auth_qr_scan_instruction">QRをスキャンし、ブラウザで承認してからここに戻ってください</string>
     <string name="auth_qr_code_display">コード: %1$s</string>
     <string name="auth_qr_refresh">QRを更新</string>

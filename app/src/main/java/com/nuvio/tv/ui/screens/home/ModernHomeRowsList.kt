@@ -18,11 +18,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -49,8 +51,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import coil3.imageLoader
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
+import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.MetaPreview
+import com.nuvio.tv.domain.model.isPlaceholder
 import com.nuvio.tv.ui.util.StableList
 import com.nuvio.tv.ui.util.StableMap
 import com.nuvio.tv.ui.util.StableRef
@@ -121,6 +125,8 @@ internal fun ModernHomeRowsList(
     continueWatchingCardHeight: Dp,
     blurUnwatchedEpisodes: Boolean,
     useEpisodeThumbnails: Boolean,
+    continueWatchingCardStyle: ContinueWatchingCardStyle,
+    continueWatchingCornerRadius: Dp,
     pendingRowFocusKey: State<String?>,
     pendingRowFocusIndex: State<Int?>,
     pendingRowFocusNonce: State<Int>,
@@ -174,7 +180,7 @@ internal fun ModernHomeRowsList(
             verticalRowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         }
             .distinctUntilChanged()
-            .debounce(120L) // VERTICAL_PREFETCH_DEBOUNCE_MS
+            .debounce(240L) // VERTICAL_PREFETCH_DEBOUNCE_MS
             .collect { lastVisibleRowIndex ->
                 withContext(Dispatchers.IO) {
                     for (rowOffset in 1..prefetchAheadRows) {
@@ -212,47 +218,26 @@ internal fun ModernHomeRowsList(
     val latestOnRequestLazyCatalogLoad = rememberUpdatedState(onRequestLazyCatalogLoad)
     val latestCarouselRowsForLazy = rememberUpdatedState(carouselRows)
     LaunchedEffect(verticalRowListState) {
-        val prefetchAheadForLazy = 1
+        val prefetchAheadForLazy = 2
         snapshotFlow {
-            val scrolling = verticalRowListState.isScrollInProgress
             val info = verticalRowListState.layoutInfo
             val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: -1
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-            Triple(scrolling, firstVisible, lastVisible)
-        }.collect { (scrolling, firstVisible, lastVisible) ->
-            if (scrolling || lastVisible < 0) return@collect
-            delay(150)
-            if (verticalRowListState.isScrollInProgress) return@collect
+            firstVisible to lastVisible
+        }.collectLatest { (firstVisible, lastVisible) ->
+            if (lastVisible < 0) return@collectLatest
+            // Debounce: restarts on every new emission during rapid scroll.
+            // Only fires when visible indices stabilize for 240ms.
+            delay(240)
             val rows = latestCarouselRowsForLazy.value
             for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + prefetchAheadForLazy)) {
                 val row = rows.list.getOrNull(idx) ?: continue
-                if (row.isLoading && row.items.list.firstOrNull()?.imageUrl == "placeholder://empty") {
-                    latestOnRequestLazyCatalogLoad.value(row.key)
+                if (row.isLoading && row.items.list.firstOrNull()?.imageUrl.isPlaceholder()) {
+                    val legacyKey = "${row.addonId}_${row.apiType}_${row.catalogId}"
+                    latestOnRequestLazyCatalogLoad.value(legacyKey)
                 }
             }
         }
-    }
-
-    // Secondary trigger: when scroll settles after focus-driven BringIntoView,
-    // check again for placeholder rows that need loading. The primary snapshotFlow
-    // above may miss this if visible indices didn't change.
-    LaunchedEffect(verticalRowListState) {
-        snapshotFlow { verticalRowListState.isScrollInProgress }
-            .collect { scrolling ->
-                if (scrolling) return@collect
-                delay(200)
-                if (verticalRowListState.isScrollInProgress) return@collect
-                val rows = latestCarouselRowsForLazy.value
-                val info = verticalRowListState.layoutInfo
-                val firstVisible = info.visibleItemsInfo.firstOrNull()?.index ?: return@collect
-                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: return@collect
-                for (idx in firstVisible.coerceAtLeast(0)..(lastVisible + 1)) {
-                    val row = rows.list.getOrNull(idx) ?: continue
-                    if (row.isLoading && row.items.list.firstOrNull()?.imageUrl == "placeholder://empty") {
-                        latestOnRequestLazyCatalogLoad.value(row.key)
-                    }
-                }
-            }
     }
 
     val focusRestorerRequester = remember(activeRowKey) {
@@ -263,7 +248,26 @@ internal fun ModernHomeRowsList(
 
     val defaultBringIntoViewSpec = LocalBringIntoViewSpec.current
 
-    val sharedPlaceholderShimmerOffsetState = rememberPlaceholderShimmerOffsetState(label = "sharedRowShimmer")
+    // Only run the shared shimmer while a row on screen actually draws it: rememberInfiniteTransition
+    // keeps waking the Compose frame clock on every frame for as long as it is composed, even when
+    // nothing reads its value. Rows below the fold stay placeholders until they are scrolled to, so
+    // the check has to be on the visible rows, not on the whole list. Keyed on the list state for
+    // the same reason isVerticalRowsScrollingState is in ModernHomeContent: rememberLazyListState
+    // is saveable-backed and can hand back a new instance, and a derived state still holding the
+    // old one would read a layout that has stopped updating.
+    val needsPlaceholderShimmer by remember(verticalRowListState) {
+        derivedStateOf {
+            val rows = latestCarouselRowsForLazy.value.list
+            verticalRowListState.layoutInfo.visibleItemsInfo.any { visibleRow ->
+                rows.getOrNull(visibleRow.index)?.showsPlaceholderShimmer() == true
+            }
+        }
+    }
+    val sharedPlaceholderShimmerOffsetState = if (needsPlaceholderShimmer) {
+        rememberPlaceholderShimmerOffsetState(label = "sharedRowShimmer")
+    } else {
+        null
+    }
 
     CompositionLocalProvider(
         LocalBringIntoViewSpec provides verticalRowBringIntoViewSpec,
@@ -446,6 +450,8 @@ internal fun ModernHomeRowsList(
                     continueWatchingCardHeight = continueWatchingCardHeight,
                     blurUnwatchedEpisodes = blurUnwatchedEpisodes,
                     useEpisodeThumbnails = useEpisodeThumbnails,
+                    continueWatchingCardStyle = continueWatchingCardStyle,
+                    continueWatchingCornerRadius = continueWatchingCornerRadius,
                     onContinueWatchingClick = onContinueWatchingClick,
                     onContinueWatchingOptions = stableOnContinueWatchingOptions,
                     isCatalogItemWatched = isCatalogItemWatched,

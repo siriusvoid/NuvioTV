@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 internal fun PlayerRuntimeController.fetchMetaDetails(id: String?, type: String?) {
     if (id.isNullOrBlank() || type.isNullOrBlank()) return
 
-    scope.launch {
+    metaFetchJob = scope.launch {
         when (
             val result = metaRepository.getMetaFromAllAddons(type = type, id = id)
                 .first { it !is NetworkResult.Loading }
@@ -36,6 +36,25 @@ internal fun PlayerRuntimeController.fetchMetaDetails(id: String?, type: String?
     }
 }
 
+internal fun PlayerRuntimeController.initializeCloudPlaybackSequence() {
+    val playbackContext = cloudPlaybackContext ?: return
+    metaVideos = playbackContext.asVideos()
+    val currentFile = playbackContext.currentFile ?: return
+    currentVideoId = playbackContext.videoId(currentFile)
+    currentSeason = 1
+    currentEpisode = playbackContext.currentIndex + 1
+    currentEpisodeTitle = currentFile.name
+    _uiState.update {
+        it.copy(
+            currentVideoId = currentVideoId,
+            currentSeason = currentSeason,
+            currentEpisode = currentEpisode,
+            currentEpisodeTitle = currentEpisodeTitle
+        )
+    }
+    recomputeNextEpisode(resetVisibility = false)
+}
+
 internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
     metaVideos = meta.videos
     metaGenres = meta.genres
@@ -46,13 +65,14 @@ internal fun PlayerRuntimeController.applyMetaDetails(meta: Meta) {
     }
     val description = resolveDescription(meta)
 
+    recomputeNextEpisode(resetVisibility = false)
     _uiState.update { state ->
         state.copy(
             description = description ?: state.description,
-            castMembers = if (meta.castMembers.isNotEmpty()) meta.castMembers else state.castMembers
+            castMembers = if (meta.castMembers.isNotEmpty()) meta.castMembers else state.castMembers,
+            isNextEpisodeMetadataResolved = true
         )
     }
-    recomputeNextEpisode(resetVisibility = false)
 }
 
 internal fun PlayerRuntimeController.resolveDescription(meta: Meta): String? {
@@ -72,16 +92,17 @@ internal fun PlayerRuntimeController.updateEpisodeDescription() {
         video.season == currentSeason && video.episode == currentEpisode
     }?.overview
 
-    if (!overview.isNullOrBlank()) {
-        _uiState.update { it.copy(description = overview) }
-    }
+    // Always update description when switching episodes - clear stale description
+    _uiState.update { it.copy(description = overview) }
 
     // Push episode metadata to the MediaSession so Google Home shows the new episode.
     updateMediaSessionMetadata()
 
-    // Re-enrich from TMDB for the new episode.
-    scope.launch {
-        enrichDescriptionFromTmdb(contentId, contentType)
+    // Cloud library IDs belong to the provider, not TMDB.
+    if (!contentType.equals("cloud", ignoreCase = true)) {
+        scope.launch {
+            enrichDescriptionFromTmdb(contentId, contentType)
+        }
     }
 }
 
@@ -161,13 +182,13 @@ private suspend fun PlayerRuntimeController.enrichDescriptionFromTmdb(id: String
 
 internal fun PlayerRuntimeController.recomputeNextEpisode(resetVisibility: Boolean) {
     val normalizedType = contentType?.lowercase()
-    if (normalizedType !in listOf("series", "tv", "other")) {
+    if (normalizedType !in listOf("series", "tv", "other", "cloud")) {
         nextEpisodeVideo = null
         clearNextEpisodeAndCancelPostPlay()
         return
     }
 
-    if (normalizedType == "other") {
+    if (normalizedType == "other" || normalizedType == "cloud") {
         val currentId = currentVideoId
         val idx = if (currentId != null) metaVideos.indexOfFirst { it.id == currentId } else -1
         val resolvedNext = if (idx >= 0 && idx < metaVideos.size - 1) metaVideos[idx + 1] else null
@@ -186,7 +207,7 @@ internal fun PlayerRuntimeController.recomputeNextEpisode(resetVisibility: Boole
             released = resolvedNext.released,
             hasAired = true,
             unairedMessage = null,
-            isOtherType = true
+            isOtherType = normalizedType == "other" || normalizedType == "cloud"
         )
         applyRecomputedNextEpisode(nextInfo, resetVisibility)
         return
@@ -295,10 +316,15 @@ internal fun PlayerRuntimeController.resetPostPlayOverlayState(clearEpisode: Boo
 }
 
 internal fun PlayerRuntimeController.evaluatePostPlayOverlayVisibility(positionMs: Long, durationMs: Long) {
+    if (_playbackTimeline.value.isLive) return
     if (!hasRenderedFirstFrame) return
+    // Short debrid/error clips must never arm next-episode auto-play (see #2819).
+    val effectiveDurationEarly = durationMs.takeIf { it > 0L } ?: lastKnownDuration
+    if (isShortPlaceholderDuration(effectiveDurationEarly)) return
+    if (!_uiState.value.error.isNullOrBlank()) return
 
     val state = _uiState.value
-    if (state.nextEpisode == null || nextEpisodeVideo == null) {
+    if (state.nextEpisode?.hasAired != true || nextEpisodeVideo == null) {
         if (state.postPlayMode != null) {
             _uiState.update { it.copy(postPlayMode = null) }
         }
@@ -306,7 +332,7 @@ internal fun PlayerRuntimeController.evaluatePostPlayOverlayVisibility(positionM
     }
     if (state.postPlayMode != null || state.postPlayDismissedForCurrentEpisode) return
 
-    val effectiveDuration = durationMs.takeIf { it > 0L } ?: lastKnownDuration
+    val effectiveDuration = effectiveDurationEarly
     val shouldShow = PlayerNextEpisodeRules.shouldShowNextEpisodeCard(
         positionMs = positionMs,
         durationMs = effectiveDuration,
@@ -366,7 +392,7 @@ internal fun PlayerRuntimeController.setSkipIntervals(list: List<SkipInterval>) 
 internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) {
     if (skipIntervals.isEmpty()) {
         if (_uiState.value.activeSkipInterval != null) {
-            _uiState.update { it.copy(activeSkipInterval = null) }
+            _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = false) }
         }
         return
     }
@@ -376,11 +402,7 @@ internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) 
     // skip button to appear instead of auto-skipping.
     if (!playerSettingsInitialized) return
 
-    val positionSec = positionMs / 1000.0
-    val active = skipIntervals.find { interval ->
-        positionSec >= interval.startTime && positionSec < (interval.endTime - 0.5)
-    }
-
+    val active = nextActiveSkipInterval(skipIntervals, positionMs)
     val currentActive = _uiState.value.activeSkipInterval
 
     if (active != null) {

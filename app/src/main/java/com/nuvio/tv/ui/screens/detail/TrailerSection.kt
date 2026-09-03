@@ -20,11 +20,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.ContentType
+import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.MetaTrailer
 import com.nuvio.tv.domain.model.PosterShape
@@ -40,6 +42,7 @@ private data class TrailerListItem(
 @Composable
 fun TrailerSection(
     trailers: List<MetaTrailer>,
+    posterCardCornerRadius: Dp = NuvioTheme.spacing.md,
     upFocusRequester: FocusRequester? = null,
     sectionFocusRequester: FocusRequester? = null,
     restoreTrailerId: String? = null,
@@ -101,11 +104,11 @@ fun TrailerSection(
         restoreFocusRequester.requestFocusAfterFrames()
     }
 
-    val landscapeStyle = remember {
+    val landscapeStyle = remember(posterCardCornerRadius) {
         PosterCardStyle(
             width = 260.dp,
             height = 146.dp,
-            cornerRadius = NuvioTheme.spacing.md,
+            cornerRadius = posterCardCornerRadius,
             focusedBorderWidth = NuvioTheme.spacing.xxs,
             focusedScale = 1.02f
         )
@@ -147,6 +150,7 @@ fun TrailerSection(
                         imageCrossfade = true,
                         focusRequester = focusRequester,
                         upFocusRequester = upFocusRequester,
+                        depthSurface = CardDepthSurface.TRAILERS,
                         onFocused = {
                             onTrailerFocused(item.trailer)
                             if (isRestoreTarget && restoreFocusToken > 0) {

@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLException
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
@@ -34,14 +35,19 @@ internal object PlayerPlaybackNetworking {
         }
     }
 
-    internal val playbackHttpClient: OkHttpClient by lazy {
+    /**
+     * Fallback OkHttpClient equipped with trust-all SSL configuration for self-signed
+     * or untrusted local media servers (e.g. self-signed WebDAV / Plex / Jellyfin).
+     */
+    internal val trustAllPlaybackHttpClient: OkHttpClient by lazy {
         val dispatcher = okhttp3.Dispatcher().apply {
-            maxRequests = 128
-            maxRequestsPerHost = 128
+            maxRequests = 64
+            maxRequestsPerHost = 32
         }
         OkHttpClient.Builder()
             .dispatcher(dispatcher)
             .dns(IPv4FirstDns())
+            .eventListenerFactory(PlaybackConnectionEvents)
             .sslSocketFactory(sslContext.socketFactory, trustAllManager)
             .hostnameVerifier(playbackHostnameVerifier)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -53,8 +59,39 @@ internal object PlayerPlaybackNetworking {
             .build()
     }
 
-    @OptIn(UnstableApi::class)
-    fun createHttpDataSourceFactory(defaultHeaders: Map<String, String> = emptyMap()): DataSource.Factory {
+    /**
+     * Primary OkHttpClient using standard system SSL certificates and full SNI support.
+     * Includes an automatic fallback to [trustAllPlaybackHttpClient] if an [SSLException]
+     * occurs on self-signed local media servers.
+     */
+    internal val playbackHttpClient: OkHttpClient by lazy {
+        val dispatcher = okhttp3.Dispatcher().apply {
+            maxRequests = 64
+            maxRequestsPerHost = 32
+        }
+        OkHttpClient.Builder()
+            .dispatcher(dispatcher)
+            .dns(IPv4FirstDns())
+            .eventListenerFactory(PlaybackConnectionEvents)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                try {
+                    chain.proceed(request)
+                } catch (e: SSLException) {
+                    // Fallback to trust-all client if standard system SSL fails (e.g. self-signed local server)
+                    trustAllPlaybackHttpClient.newCall(request).execute()
+                }
+            }
+            .build()
+    }
+
+    fun createHttpClient(defaultHeaders: Map<String, String> = emptyMap()): OkHttpClient {
         val builder = playbackHttpClient.newBuilder()
         if (defaultHeaders.any { it.key.equals("Authorization", ignoreCase = true) }) {
             // OkHttp strips the Authorization header on cross-host redirects.
@@ -78,18 +115,24 @@ internal object PlayerPlaybackNetworking {
                 }
             }
         }
-        val client = builder
+        return builder
             .let { NuvioExoPlayerPerformanceHelper.applyNetworkOptimizations(it) }
             .build()
-        return OkHttpDataSource.Factory(client).apply {
+    }
+
+    @UnstableApi
+    fun createHttpDataSourceFactory(defaultHeaders: Map<String, String> = emptyMap()): DataSource.Factory {
+        val client = createHttpClient(defaultHeaders)
+        val httpFactory = OkHttpDataSource.Factory(client).apply {
             setDefaultRequestProperties(defaultHeaders)
             if (defaultHeaders.none { it.key.equals("User-Agent", ignoreCase = true) }) {
                 setUserAgent(PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
             }
         }
+        return LoggingDataSourceFactory(httpFactory, "HTTP")
     }
 
-    @OptIn(UnstableApi::class)
+    @UnstableApi
     fun createDataSourceFactory(
         context: android.content.Context,
         defaultHeaders: Map<String, String> = emptyMap()
@@ -106,10 +149,6 @@ internal object PlayerPlaybackNetworking {
         range: String? = null
     ): HttpURLConnection {
         return (URL(url).openConnection() as HttpURLConnection).apply {
-            if (this is HttpsURLConnection) {
-                sslSocketFactory = sslContext.socketFactory
-                hostnameVerifier = playbackHostnameVerifier
-            }
             instanceFollowRedirects = true
             connectTimeout = connectTimeoutMs
             readTimeout = readTimeoutMs

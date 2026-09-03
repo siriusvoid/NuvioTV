@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.io.File
@@ -22,6 +23,7 @@ import javax.inject.Singleton
 class ProfileManager @Inject constructor(
     private val profileDataStore: ProfileDataStore,
     private val factory: ProfileDataStoreFactory,
+    private val credentialStores: Set<@JvmSuppressWildcards ProfileScopedCredentialStore>,
     @ApplicationContext private val context: Context
 ) {
     companion object {
@@ -41,6 +43,9 @@ class ProfileManager @Inject constructor(
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     val rememberLastProfileEnabled: StateFlow<Boolean> = profileDataStore.rememberLastProfileEnabled
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    val confirmExitEnabled: StateFlow<Boolean> = profileDataStore.confirmExitEnabled
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     val profiles: StateFlow<List<UserProfile>> = profileDataStore.profilesList
@@ -68,18 +73,22 @@ class ProfileManager @Inject constructor(
         profileDataStore.setRememberLastProfileEnabled(enabled)
     }
 
+    suspend fun setConfirmExitEnabled(enabled: Boolean) {
+        profileDataStore.setConfirmExitEnabled(enabled)
+    }
+
     suspend fun createProfile(
         name: String,
         avatarColorHex: String,
         usesPrimaryAddons: Boolean = false,
         usesPrimaryPlugins: Boolean = false,
         avatarId: String? = null
-    ): Boolean {
+    ): UserProfile? {
         val current = profiles.value
-        if (current.size >= MAX_PROFILES) return false
+        if (current.size >= MAX_PROFILES) return null
 
         val usedIds = current.map { it.id }.toSet()
-        val nextId = (2..MAX_PROFILES).firstOrNull { it !in usedIds } ?: return false
+        val nextId = (2..MAX_PROFILES).firstOrNull { it !in usedIds } ?: return null
 
         val profile = UserProfile(
             id = nextId,
@@ -91,12 +100,14 @@ class ProfileManager @Inject constructor(
         )
         factory.markProfileCreated(nextId)
         profileDataStore.upsertProfile(profile)
-        return true
+        profiles.first { entries -> entries.any { it.id == nextId } }
+        return profile
     }
 
     suspend fun deleteProfile(id: Int): Boolean {
         if (id == 1) return false
         if (profiles.value.none { it.id == id }) return false
+        credentialStores.forEach { store -> store.removeProfile(id) }
         deleteProfileDataAsync(id)
         profileDataStore.deleteProfile(id)
         return true

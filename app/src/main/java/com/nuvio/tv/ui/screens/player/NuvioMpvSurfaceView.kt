@@ -49,10 +49,10 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         applyHeaders(headers)
         val startOption = startPositionMs
             .takeIf { it > 0L }
-            ?.let { String.format(Locale.US, "start=%.3f", it / 1000.0) }
+            ?.let { String.format(Locale.US, "start=+%.3f", it / 1000.0) }
         if (startOption != null && holder.surface?.isValid == true) {
             ensureSurfaceAttachedIfAlreadyAvailable()
-            mpv.command("loadfile", url, "replace", startOption)
+            loadFileWithOptions(url, startOption)
             hasQueuedInitialMedia = true
             pendingInitialMediaUrl = null
             pendingInitialStartOption = null
@@ -88,10 +88,19 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         pendingInitialMediaUrl = null
         pendingInitialStartOption = null
         if (startOption != null) {
-            mpv.command("loadfile", url, "replace", startOption)
+            loadFileWithOptions(url, startOption)
         } else {
             mpv.command("loadfile", url, "replace")
         }
+    }
+
+    /**
+     * mpv's `loadfile` signature is `<url> [<flags> [<index> [<options>]]]`, so the per-file option
+     * list belongs in the fifth argument. Passing it where `<index>` is expected makes mpv reject
+     * the whole command and stay idle, i.e. resuming at a position would never load the file.
+     */
+    private fun loadFileWithOptions(url: String, options: String) {
+        mpv.command("loadfile", url, "replace", LOADFILE_DEFAULT_INDEX, options)
     }
 
     fun setMediaUsingLoadfile(url: String, headers: Map<String, String>) {
@@ -152,9 +161,19 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         return mpv.getPropertyBoolean("paused-for-cache") == true
     }
 
+    fun demuxerCacheDurationSec(): Double {
+        if (!initialized) return 0.0
+        return mpv.getPropertyDouble("demuxer-cache-duration") ?: 0.0
+    }
+
     fun isCoreIdleNow(): Boolean {
         if (!initialized) return false
         return mpv.getPropertyBoolean("core-idle") == true
+    }
+
+    fun isEofReached(): Boolean {
+        if (!initialized) return false
+        return mpv.getPropertyBoolean("eof-reached") == true
     }
 
     fun seekToMs(positionMs: Long) {
@@ -175,6 +194,12 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         if (!initialized) return 0L
         val seconds = mpv.getPropertyDouble("duration/full") ?: 0.0
         return (seconds * 1000.0).roundToLong().coerceAtLeast(0L)
+    }
+
+    /** Live HLS/DASH in mpv is typically reported as not seekable. VOD HLS is seekable. */
+    fun isLiveStreamNow(): Boolean {
+        if (!initialized) return false
+        return mpv.getPropertyBoolean("seekable") == false
     }
 
     fun hasVideoTrackSelectedNow(): Boolean {
@@ -233,6 +258,51 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
             mpv.setPropertyDouble("sub-delay", delayMs / 1000.0)
         }.onFailure {
             Log.w(TAG, "Failed to set subtitle delay on mpv: ${it.message}")
+        }
+    }
+
+    fun setAudioDelayMs(delayMs: Int) {
+        if (!initialized) return
+        runCatching {
+            mpv.setPropertyDouble("audio-delay", audioDelayMsToSeconds(delayMs))
+        }.onFailure {
+            Log.w(TAG, "Failed to set audio delay on mpv (delayMs=$delayMs): ${it.message}")
+        }
+    }
+
+    /**
+     * Bluetooth A2DP/LE cannot carry encoded passthrough. Force a stereo PCM mix.
+     * Mid-session route changes pass [reloadOutput] so AudioTrack follows the new device
+     * without restarting video.
+     */
+    fun applyBluetoothAudioRoute(isBluetooth: Boolean, reloadOutput: Boolean = false) {
+        if (!initialized) return
+        val wasPaused = !isPlayingNow()
+        runCatching {
+            mpv.setPropertyString("audio-channels", MpvBluetoothAudioPolicy.audioChannels(isBluetooth))
+            if (MpvBluetoothAudioPolicy.shouldClearAudioSpdif(isBluetooth)) {
+                mpv.setPropertyString("audio-spdif", "")
+            }
+            if (reloadOutput) {
+                reloadAudioOutput()
+                if (wasPaused) {
+                    mpv.setPropertyBoolean("pause", true)
+                }
+            }
+        }.onFailure {
+            Log.w(TAG, "Failed to apply bluetooth audio route on mpv (bt=$isBluetooth): ${it.message}")
+        }
+    }
+
+    private fun reloadAudioOutput() {
+        val reloaded = runCatching {
+            mpv.command("ao-reload")
+            true
+        }.getOrDefault(false)
+        if (reloaded) return
+        val aid = mpv.getPropertyString("aid")
+        if (!aid.isNullOrBlank() && !aid.equals("no", ignoreCase = true)) {
+            runCatching { mpv.setPropertyString("aid", aid) }
         }
     }
 
@@ -305,18 +375,22 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
                 else -> 1.0
             }
             val backgroundAlpha = (style.backgroundColor ushr 24) and 0xFF
-            val borderStyle = if (backgroundAlpha > 0) "opaque-box" else "outline-and-shadow"
+            val borderStyle = if (backgroundAlpha > 0) "background-box" else "outline-and-shadow"
+            // In background-box mode, sub-shadow-offset controls the box padding/margin
+            val shadowOffset = if (backgroundAlpha > 0) 5.0 else 0.0
 
             mpv.setPropertyDouble("sub-scale", scale)
             mpv.setPropertyBoolean("sub-bold", style.bold)
             mpv.setPropertyDouble("sub-outline-size", outlineSize)
             mpv.setPropertyDouble("sub-pos", subPos)
             mpv.setPropertyInt("sub-margin-y", subMarginY)
-            mpv.setPropertyDouble("sub-shadow-offset", 0.0)
+            mpv.setPropertyDouble("sub-shadow-offset", shadowOffset)
             mpv.setPropertyString("sub-border-style", borderStyle)
             mpv.setPropertyString("sub-color", toMpvColor(style.textColor))
             mpv.setPropertyString("sub-back-color", toMpvColor(style.backgroundColor))
             mpv.setPropertyString("sub-outline-color", toMpvColor(style.outlineColor))
+            mpv.setPropertyBoolean("sub-filter-sdh", style.stripSdh)
+            mpv.setPropertyBoolean("sub-filter-sdh-harder", style.stripSdh)
         }.onFailure {
             Log.w(TAG, "Failed to apply subtitle style on mpv: ${it.message}")
         }
@@ -552,6 +626,7 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
         mpv.setOptionString("user-agent", PlayerMediaSourceFactory.DEFAULT_USER_AGENT)
         // Preserve native ASS/SSA styling behavior on MPV.
         mpv.setOptionString("sub-ass-override", "no")
+        mpv.setOptionString("sub-codepage", "auto:utf-8")
         mpv.setOptionString("sub-font", "Roboto")
         mpv.setOptionString("sub-use-margins", "yes")
         mpv.setOptionString("sub-ass-force-margins", "yes")
@@ -666,6 +741,8 @@ class NuvioMpvSurfaceView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "NuvioMpvSurfaceView"
+        /** `loadfile` insertion index; only meaningful for insert-at flags, -1 is mpv's default. */
+        private const val LOADFILE_DEFAULT_INDEX = "-1"
         private const val MPV_COVER_FALLBACK_SCALE = 1.15f
         private const val MPV_MAX_VOLUME_PERCENT = 400.0
         private const val ASPECT_RETRY_DELAY_MS = 120L

@@ -1,6 +1,9 @@
 package com.nuvio.tv.ui.screens.detail
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.domain.model.CardDepthSurface
+import com.nuvio.tv.ui.components.LocalCardDepthStyle
+import com.nuvio.tv.ui.components.nuvioCardDepth
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -289,6 +292,7 @@ private fun CastMemberItem(
     }
 
     var isFocused by remember { mutableStateOf(false) }
+    val cardDepthStyle = LocalCardDepthStyle.current
 
     Column(
         modifier = Modifier.width(itemWidth),
@@ -312,13 +316,20 @@ private fun CastMemberItem(
             ),
             border = CardDefaults.border(
                 focusedBorder = Border(
-                    border = androidx.compose.foundation.BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                     shape = CircleShape
                 )
             )
         ) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .nuvioCardDepth(
+                        shape = CircleShape,
+                        surface = CardDepthSurface.CAST,
+                        style = cardDepthStyle
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 val currentBgColor = if (isFocused) NuvioTheme.colors.FocusBackground else NuvioTheme.colors.SurfaceVariant

@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,10 +45,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -64,14 +70,27 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.core.streams.STREAM_BADGE_IMPORT_LIMIT
 import com.nuvio.tv.core.streams.StreamBadgePlacement
+import com.nuvio.tv.domain.model.ContinueWatchingCardStyle
 import com.nuvio.tv.domain.model.ContinueWatchingSortMode
+import com.nuvio.tv.domain.model.CardDepthStyle
+import com.nuvio.tv.domain.model.CardDepthSurface
+import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_EDGE_COVERAGE
+import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_EDGE_STRENGTH
+import com.nuvio.tv.domain.model.DEFAULT_CARD_DEPTH_SHEEN_STRENGTH
+import com.nuvio.tv.domain.model.DetailImdbRatingsVisibility
 import com.nuvio.tv.domain.model.DiscoverLocation
+import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
 import com.nuvio.tv.domain.model.FocusedPosterTrailerPlaybackTarget
 import com.nuvio.tv.domain.model.HomeLayout
+import com.nuvio.tv.domain.model.HomeImdbRatingsVisibility
+import com.nuvio.tv.ui.components.CardCwStylePreview
 import com.nuvio.tv.ui.components.ClassicLayoutPreview
 import com.nuvio.tv.ui.components.GridLayoutPreview
 import com.nuvio.tv.ui.components.ModernLayoutPreview
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.components.PosterCwStylePreview
+import com.nuvio.tv.ui.components.WideCwStylePreview
+import com.nuvio.tv.ui.components.cardDepthVisual
 import com.nuvio.tv.ui.screens.addon.QrCodeOverlay
 
 @Composable
@@ -116,8 +135,11 @@ fun LayoutSettingsContent(
     var continueWatchingExpanded by rememberSaveable { mutableStateOf(false) }
     var focusedPosterExpanded by rememberSaveable { mutableStateOf(false) }
     var posterCardStyleExpanded by rememberSaveable { mutableStateOf(false) }
+    var showCardDepthFineTuneDialog by rememberSaveable { mutableStateOf(false) }
     var showCwSortModeDialog by rememberSaveable { mutableStateOf(false) }
     var showStreamBadgePositionDialog by rememberSaveable { mutableStateOf(false) }
+    var showEpisodeRatingsDialog by rememberSaveable { mutableStateOf(false) }
+    var showEpisodeOptionsOverlayStyleDialog by rememberSaveable { mutableStateOf(false) }
 
     val defaultHomeLayoutHeaderFocus = remember { FocusRequester() }
     val homeContentHeaderFocus = remember { FocusRequester() }
@@ -129,7 +151,6 @@ fun LayoutSettingsContent(
     val homeLayoutHeaderFocus = initialFocusRequester ?: defaultHomeLayoutHeaderFocus
 
     var focusedSection by remember { mutableStateOf<LayoutSettingsSection?>(null) }
-    var activePreviewLayout by remember(uiState.selectedLayout) { mutableStateOf(uiState.selectedLayout) }
 
     LaunchedEffect(homeLayoutExpanded, focusedSection) {
         if (!homeLayoutExpanded && focusedSection == LayoutSettingsSection.HOME_LAYOUT) {
@@ -204,46 +225,45 @@ fun LayoutSettingsContent(
                     focusRequester = homeLayoutHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.HOME_LAYOUT }
                 ) {
+                    val firstHomeLayoutFocusRequester = remember { FocusRequester() }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .settingsOptionRow(firstHomeLayoutFocusRequester),
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
                     ) {
                         LayoutCard(
                             layout = HomeLayout.MODERN,
                             isSelected = uiState.selectedLayout == HomeLayout.MODERN,
-                            showLivePreview = activePreviewLayout == HomeLayout.MODERN || uiState.selectedLayout == HomeLayout.MODERN,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.MODERN))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.MODERN
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(firstHomeLayoutFocusRequester)
                         )
                         LayoutCard(
                             layout = HomeLayout.GRID,
                             isSelected = uiState.selectedLayout == HomeLayout.GRID,
-                            showLivePreview = activePreviewLayout == HomeLayout.GRID || uiState.selectedLayout == HomeLayout.GRID,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.GRID))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.GRID
                             },
                             modifier = Modifier.weight(1f)
                         )
                         LayoutCard(
                             layout = HomeLayout.CLASSIC,
                             isSelected = uiState.selectedLayout == HomeLayout.CLASSIC,
-                            showLivePreview = activePreviewLayout == HomeLayout.CLASSIC || uiState.selectedLayout == HomeLayout.CLASSIC,
                             onClick = {
                                 viewModel.onEvent(LayoutSettingsEvent.SelectLayout(HomeLayout.CLASSIC))
                             },
                             onFocused = {
                                 focusedSection = LayoutSettingsSection.HOME_LAYOUT
-                                activePreviewLayout = HomeLayout.CLASSIC
                             },
                             modifier = Modifier.weight(1f)
                         )
@@ -304,21 +324,28 @@ fun LayoutSettingsContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = NuvioTheme.colors.TextTertiary
                         )
+                        val firstHeroCatalogFocusRequester = remember { FocusRequester() }
                         LazyRow(
+                            modifier = Modifier.settingsOptionRow(firstHeroCatalogFocusRequester),
                             contentPadding = PaddingValues(end = NuvioTheme.spacing.sm),
                             horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
                         ) {
-                            items(
+                            itemsIndexed(
                                 items = uiState.availableCatalogs,
-                                key = { it.key }
-                            ) { catalog ->
+                                key = { _, catalog -> catalog.key }
+                            ) { catalogIndex, catalog ->
                                 CatalogChip(
                                     catalogInfo = catalog,
                                     isSelected = catalog.key in uiState.heroCatalogKeys,
                                     onClick = {
                                         viewModel.onEvent(LayoutSettingsEvent.ToggleHeroCatalog(catalog.key))
                                     },
-                                    onFocused = { focusedSection = LayoutSettingsSection.HOME_LAYOUT }
+                                    onFocused = { focusedSection = LayoutSettingsSection.HOME_LAYOUT },
+                                    modifier = if (catalogIndex == 0) {
+                                        Modifier.focusRequester(firstHeroCatalogFocusRequester)
+                                    } else {
+                                        Modifier
+                                    }
                                 )
                             }
                         }
@@ -442,6 +469,28 @@ fun LayoutSettingsContent(
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
                     )
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_overall_ratings),
+                        subtitle = stringResource(
+                            if (uiState.homeImdbRatingsVisibility.showRatings) {
+                                R.string.layout_overall_ratings_sub_on
+                            } else {
+                                R.string.layout_overall_ratings_sub_off
+                            }
+                        ),
+                        checked = uiState.homeImdbRatingsVisibility.showRatings,
+                        onToggle = {
+                            val visibility = if (uiState.homeImdbRatingsVisibility.showRatings) {
+                                HomeImdbRatingsVisibility.HIDE_ALL
+                            } else {
+                                HomeImdbRatingsVisibility.SHOW_ALL
+                            }
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetHomeImdbRatingsVisibility(visibility)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
+                    )
                 }
             }
 
@@ -454,6 +503,14 @@ fun LayoutSettingsContent(
                     focusRequester = detailPageHeaderFocus,
                     onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
                 ) {
+                    SettingsActionRow(
+                        title = stringResource(R.string.layout_episode_options_overlay),
+                        subtitle = stringResource(R.string.layout_episode_options_overlay_sub),
+                        value = episodeOptionsOverlayStyleLabel(uiState.episodeOptionsOverlayStyle),
+                        onClick = { showEpisodeOptionsOverlayStyleDialog = true },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
                     CompactToggleRow(
                         title = stringResource(R.string.layout_blur_unwatched),
                         subtitle = stringResource(R.string.layout_blur_unwatched_sub),
@@ -463,6 +520,14 @@ fun LayoutSettingsContent(
                                 LayoutSettingsEvent.SetBlurUnwatchedEpisodes(!uiState.blurUnwatchedEpisodes)
                             )
                         },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    SettingsActionRow(
+                        title = stringResource(R.string.layout_episode_ratings),
+                        subtitle = stringResource(R.string.layout_episode_ratings_sub),
+                        value = episodeRatingsVisibilityLabel(uiState.detailImdbRatingsVisibility),
+                        onClick = { showEpisodeRatingsDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
                     )
 
@@ -654,18 +719,76 @@ fun LayoutSettingsContent(
                     onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                 ) {
                     CompactToggleRow(
-                        title = stringResource(R.string.layout_use_episode_thumbnails_cw),
-                        subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
-                        checked = uiState.useEpisodeThumbnailsInCw,
+                        title = stringResource(R.string.layout_cw_enabled),
+                        subtitle = stringResource(R.string.layout_cw_enabled_sub),
+                        checked = uiState.continueWatchingEnabled,
                         onToggle = {
                             viewModel.onEvent(
-                                LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
+                                LayoutSettingsEvent.SetContinueWatchingEnabled(!uiState.continueWatchingEnabled)
                             )
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
 
-                    if (uiState.useEpisodeThumbnailsInCw) {
+                    if (uiState.continueWatchingEnabled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+                    ) {
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.CARD,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.CARD,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.CARD)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.WIDE,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.WIDE,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.WIDE)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                        CwStyleCard(
+                            style = ContinueWatchingCardStyle.POSTER,
+                            isSelected = uiState.continueWatchingCardStyle == ContinueWatchingCardStyle.POSTER,
+                            onClick = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetContinueWatchingCardStyle(ContinueWatchingCardStyle.POSTER)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // Poster cards always show poster art, so the episode thumbnail options do not apply to them.
+                    val episodeThumbnailsApply =
+                        uiState.continueWatchingCardStyle != ContinueWatchingCardStyle.POSTER
+
+                    if (episodeThumbnailsApply) {
+                        CompactToggleRow(
+                            title = stringResource(R.string.layout_use_episode_thumbnails_cw),
+                            subtitle = stringResource(R.string.layout_use_episode_thumbnails_cw_sub),
+                            checked = uiState.useEpisodeThumbnailsInCw,
+                            onToggle = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetUseEpisodeThumbnailsInCw(!uiState.useEpisodeThumbnailsInCw)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
+                        )
+                    }
+
+                    if (episodeThumbnailsApply && uiState.useEpisodeThumbnailsInCw) {
                         CompactToggleRow(
                             title = stringResource(R.string.layout_blur_cw_next_up),
                             subtitle = stringResource(R.string.layout_blur_cw_next_up_sub),
@@ -709,10 +832,12 @@ fun LayoutSettingsContent(
                         value = when (uiState.continueWatchingSortMode) {
                             ContinueWatchingSortMode.DEFAULT -> stringResource(R.string.layout_cw_sort_default)
                             ContinueWatchingSortMode.STREAMING_STYLE -> stringResource(R.string.layout_cw_sort_streaming)
+                            ContinueWatchingSortMode.SPLIT_UPCOMING -> stringResource(R.string.layout_cw_sort_split_upcoming)
                         },
                         onClick = { showCwSortModeDialog = true },
                         onFocused = { focusedSection = LayoutSettingsSection.CONTINUE_WATCHING }
                     )
+                    } // end if (uiState.continueWatchingEnabled)
                 }
             }
 
@@ -852,6 +977,35 @@ fun LayoutSettingsContent(
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.POSTER_CARD_STYLE }
                     )
+                    Spacer(modifier = Modifier.height(NuvioTheme.spacing.md))
+                    Text(
+                        text = stringResource(R.string.settings_card_depth_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = NuvioTheme.colors.TextPrimary
+                    )
+                    CardDepthStyleControls(
+                        style = uiState.cardDepthStyle,
+                        onEnabledChange = { enabled ->
+                            viewModel.onEvent(LayoutSettingsEvent.SetCardDepthEnabled(enabled))
+                        },
+                        onEdgeStrengthChange = { strength ->
+                            viewModel.onEvent(LayoutSettingsEvent.SetCardDepthEdgeStrength(strength))
+                        },
+                        onSheenStrengthChange = { strength ->
+                            viewModel.onEvent(LayoutSettingsEvent.SetCardDepthSheenStrength(strength))
+                        },
+                        onEdgeCoverageChange = { coverage ->
+                            viewModel.onEvent(LayoutSettingsEvent.SetCardDepthEdgeCoverage(coverage))
+                        },
+                        onSurfaceEnabledChange = { surface, enabled ->
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetCardDepthSurfaceEnabled(surface, enabled)
+                            )
+                        },
+                        onFineTune = { showCardDepthFineTuneDialog = true },
+                        onReset = { viewModel.onEvent(LayoutSettingsEvent.ResetCardDepthStyle) },
+                        onFocused = { focusedSection = LayoutSettingsSection.POSTER_CARD_STYLE }
+                    )
                 }
             }
             }
@@ -882,6 +1036,55 @@ fun LayoutSettingsContent(
             )
         }
 
+        if (showEpisodeRatingsDialog) {
+            EpisodeRatingsDialog(
+                currentVisibility = uiState.detailImdbRatingsVisibility,
+                onVisibilitySelected = { visibility ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetDetailImdbRatingsVisibility(visibility))
+                    showEpisodeRatingsDialog = false
+                },
+                onDismiss = { showEpisodeRatingsDialog = false }
+            )
+        }
+
+        if (showEpisodeOptionsOverlayStyleDialog) {
+            EpisodeOptionsOverlayStyleDialog(
+                currentStyle = uiState.episodeOptionsOverlayStyle,
+                onStyleSelected = { style ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetEpisodeOptionsOverlayStyle(style))
+                    showEpisodeOptionsOverlayStyleDialog = false
+                },
+                onDismiss = { showEpisodeOptionsOverlayStyleDialog = false }
+            )
+        }
+
+        if (showCardDepthFineTuneDialog) {
+            CardDepthFineTuneDialog(
+                style = uiState.cardDepthStyle,
+                onEdgeStrengthChange = { strength ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetCardDepthEdgeStrength(strength))
+                },
+                onSheenStrengthChange = { strength ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetCardDepthSheenStrength(strength))
+                },
+                onEdgeCoverageChange = { coverage ->
+                    viewModel.onEvent(LayoutSettingsEvent.SetCardDepthEdgeCoverage(coverage))
+                },
+                onReset = {
+                    viewModel.onEvent(
+                        LayoutSettingsEvent.SetCardDepthEdgeStrength(DEFAULT_CARD_DEPTH_EDGE_STRENGTH)
+                    )
+                    viewModel.onEvent(
+                        LayoutSettingsEvent.SetCardDepthSheenStrength(DEFAULT_CARD_DEPTH_SHEEN_STRENGTH)
+                    )
+                    viewModel.onEvent(
+                        LayoutSettingsEvent.SetCardDepthEdgeCoverage(DEFAULT_CARD_DEPTH_EDGE_COVERAGE)
+                    )
+                },
+                onDismiss = { showCardDepthFineTuneDialog = false }
+            )
+        }
+
         if (streamBadgeUiState.isQrModeActive) {
             QrCodeOverlay(
                 qrBitmap = streamBadgeUiState.qrCodeBitmap,
@@ -893,6 +1096,23 @@ fun LayoutSettingsContent(
         }
     }
 }
+
+@Composable
+private fun episodeRatingsVisibilityLabel(visibility: DetailImdbRatingsVisibility): String =
+    when (visibility) {
+        DetailImdbRatingsVisibility.SHOW_ALL -> stringResource(R.string.layout_ratings_show)
+        DetailImdbRatingsVisibility.HIDE_UNWATCHED_EPISODES -> stringResource(R.string.layout_ratings_hide_unwatched)
+        DetailImdbRatingsVisibility.HIDE_EPISODES,
+        DetailImdbRatingsVisibility.HIDE_ALL -> stringResource(R.string.layout_ratings_hide)
+    }
+
+@Composable
+private fun episodeOptionsOverlayStyleLabel(style: EpisodeOptionsOverlayStyle): String =
+    when (style) {
+        EpisodeOptionsOverlayStyle.NONE -> stringResource(R.string.layout_episode_options_overlay_none)
+        EpisodeOptionsOverlayStyle.ARTWORK -> stringResource(R.string.layout_episode_options_overlay_artwork)
+        EpisodeOptionsOverlayStyle.BLUR -> stringResource(R.string.layout_episode_options_overlay_blur)
+    }
 
 @Composable
 private fun streamBadgePlacementLabel(placement: StreamBadgePlacement): String =
@@ -946,6 +1166,75 @@ private fun StreamBadgePositionDialog(
 }
 
 @Composable
+private fun EpisodeRatingsDialog(
+    currentVisibility: DetailImdbRatingsVisibility,
+    onVisibilitySelected: (DetailImdbRatingsVisibility) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        SettingsPickerOption(
+            DetailImdbRatingsVisibility.SHOW_ALL,
+            stringResource(R.string.layout_ratings_show)
+        ),
+        SettingsPickerOption(
+            DetailImdbRatingsVisibility.HIDE_EPISODES,
+            stringResource(R.string.layout_ratings_hide)
+        ),
+        SettingsPickerOption(
+            DetailImdbRatingsVisibility.HIDE_UNWATCHED_EPISODES,
+            stringResource(R.string.layout_ratings_hide_unwatched)
+        )
+    )
+
+    SettingsSingleChoiceDialog(
+        title = stringResource(R.string.layout_episode_ratings),
+        subtitle = stringResource(R.string.layout_episode_ratings_sub),
+        options = options,
+        selectedValue = currentVisibility,
+        onOptionSelected = onVisibilitySelected,
+        onDismiss = onDismiss,
+        width = 420.dp,
+        maxHeight = 340.dp
+    )
+}
+
+@Composable
+private fun EpisodeOptionsOverlayStyleDialog(
+    currentStyle: EpisodeOptionsOverlayStyle,
+    onStyleSelected: (EpisodeOptionsOverlayStyle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(
+        SettingsPickerOption(
+            EpisodeOptionsOverlayStyle.NONE,
+            stringResource(R.string.layout_episode_options_overlay_none),
+            stringResource(R.string.layout_episode_options_overlay_none_desc)
+        ),
+        SettingsPickerOption(
+            EpisodeOptionsOverlayStyle.ARTWORK,
+            stringResource(R.string.layout_episode_options_overlay_artwork),
+            stringResource(R.string.layout_episode_options_overlay_artwork_desc)
+        ),
+        SettingsPickerOption(
+            EpisodeOptionsOverlayStyle.BLUR,
+            stringResource(R.string.layout_episode_options_overlay_blur),
+            stringResource(R.string.layout_episode_options_overlay_blur_desc)
+        )
+    )
+
+    SettingsSingleChoiceDialog(
+        title = stringResource(R.string.layout_episode_options_overlay),
+        subtitle = stringResource(R.string.layout_episode_options_overlay_sub),
+        options = options,
+        selectedValue = currentStyle,
+        onOptionSelected = onStyleSelected,
+        onDismiss = onDismiss,
+        width = 460.dp,
+        maxHeight = 380.dp
+    )
+}
+
+@Composable
 private fun ContinueWatchingSortModeDialog(
     currentMode: ContinueWatchingSortMode,
     onModeSelected: (ContinueWatchingSortMode) -> Unit,
@@ -961,6 +1250,11 @@ private fun ContinueWatchingSortModeDialog(
             ContinueWatchingSortMode.STREAMING_STYLE,
             stringResource(R.string.layout_cw_sort_streaming),
             stringResource(R.string.layout_cw_sort_streaming_desc)
+        ),
+        SettingsPickerOption(
+            ContinueWatchingSortMode.SPLIT_UPCOMING,
+            stringResource(R.string.layout_cw_sort_split_upcoming),
+            stringResource(R.string.layout_cw_sort_split_upcoming_desc)
         )
     )
 
@@ -1040,12 +1334,15 @@ private fun ModernTrailerPlaybackTargetRow(
         style = MaterialTheme.typography.bodySmall,
         color = NuvioTheme.colors.TextTertiary
     )
+    val firstTrailerTargetFocusRequester = remember { FocusRequester() }
     LazyRow(
+        modifier = Modifier.settingsOptionRow(firstTrailerTargetFocusRequester),
         contentPadding = PaddingValues(end = NuvioTheme.spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
         item(key = "trailer_target_expanded_card") {
             SettingsChoiceChip(
+                modifier = Modifier.focusRequester(firstTrailerTargetFocusRequester),
                 label = stringResource(R.string.layout_trailer_expanded_card),
                 selected = selectedTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD,
                 onClick = {
@@ -1156,10 +1453,9 @@ private fun DiscoverLocationDialog(
 }
 
 @Composable
-private fun LayoutCard(
-    layout: HomeLayout,
+private fun CwStyleCard(
+    style: ContinueWatchingCardStyle,
     isSelected: Boolean,
-    showLivePreview: Boolean,
     onClick: () -> Unit,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier
@@ -1181,11 +1477,11 @@ private fun LayoutCard(
         ),
         border = CardDefaults.border(
             border = if (isSelected) Border(
-                border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.FocusRing),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
                 shape = RoundedCornerShape(SettingsSecondaryCardRadius)
             ) else Border.None,
             focusedBorder = Border(
-                border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                 shape = RoundedCornerShape(SettingsSecondaryCardRadius)
             )
         ),
@@ -1203,14 +1499,105 @@ private fun LayoutCard(
                     .fillMaxWidth()
                     .height(112.dp)
             ) {
-                if (showLivePreview) {
-                    when (layout) {
-                        HomeLayout.CLASSIC -> ClassicLayoutPreview(modifier = Modifier.fillMaxWidth())
-                        HomeLayout.GRID -> GridLayoutPreview(modifier = Modifier.fillMaxWidth())
-                        HomeLayout.MODERN -> ModernLayoutPreview(modifier = Modifier.fillMaxWidth())
-                    }
-                } else {
-                    LayoutPreviewPlaceholder()
+                when (style) {
+                    ContinueWatchingCardStyle.CARD -> CardCwStylePreview(modifier = Modifier.fillMaxSize())
+                    ContinueWatchingCardStyle.WIDE -> WideCwStylePreview(modifier = Modifier.fillMaxSize())
+                    ContinueWatchingCardStyle.POSTER -> PosterCwStylePreview(modifier = Modifier.fillMaxSize())
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(R.string.cd_selected),
+                        tint = NuvioTheme.colors.FocusRing,
+                        modifier = Modifier
+                            .size(NuvioTheme.spacing.lg)
+                            .padding(end = 6.dp)
+                    )
+                }
+                Text(
+                    text = when (style) {
+                        ContinueWatchingCardStyle.CARD -> stringResource(R.string.layout_cw_card_style_card)
+                        ContinueWatchingCardStyle.WIDE -> stringResource(R.string.layout_cw_card_style_wide)
+                        ContinueWatchingCardStyle.POSTER -> stringResource(R.string.layout_cw_card_style_poster)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected || isFocused) NuvioTheme.colors.TextPrimary else NuvioTheme.colors.TextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutCard(
+    layout: HomeLayout,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    // Selected always animates; others animate only while focused.
+    val animatePreview = isSelected || isFocused
+
+    Card(
+        onClick = onClick,
+        modifier = modifier.onFocusChanged { state ->
+            val nowFocused = state.isFocused
+            if (isFocused != nowFocused) {
+                isFocused = nowFocused
+                if (nowFocused) onFocused()
+            }
+        },
+        colors = CardDefaults.colors(
+            containerColor = NuvioTheme.colors.Background,
+            focusedContainerColor = NuvioTheme.colors.Background
+        ),
+        border = CardDefaults.border(
+            border = if (isSelected) Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
+                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
+            ) else Border.None,
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = RoundedCornerShape(SettingsSecondaryCardRadius)
+            )
+        ),
+        shape = CardDefaults.shape(RoundedCornerShape(SettingsSecondaryCardRadius)),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(112.dp)
+            ) {
+                when (layout) {
+                    HomeLayout.CLASSIC -> ClassicLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
+                    HomeLayout.GRID -> GridLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
+                    HomeLayout.MODERN -> ModernLayoutPreview(
+                        modifier = Modifier.fillMaxWidth(),
+                        animated = animatePreview
+                    )
                 }
             }
 
@@ -1245,37 +1632,214 @@ private fun LayoutCard(
 }
 
 @Composable
-private fun LayoutPreviewPlaceholder() {
+private fun CatalogChip(
+    catalogInfo: CatalogInfo,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    SettingsChoiceChip(
+        modifier = modifier,
+        label = catalogInfo.name,
+        selected = isSelected,
+        onClick = onClick,
+        onFocused = onFocused
+    )
+}
+
+@Composable
+private fun CardDepthStyleControls(
+    style: CardDepthStyle,
+    onEnabledChange: (Boolean) -> Unit,
+    onEdgeStrengthChange: (Int) -> Unit,
+    onSheenStrengthChange: (Int) -> Unit,
+    onEdgeCoverageChange: (Int) -> Unit,
+    onSurfaceEnabledChange: (CardDepthSurface, Boolean) -> Unit,
+    onFineTune: () -> Unit,
+    onReset: () -> Unit,
+    onFocused: () -> Unit
+) {
+    val edgeOptions = listOf(
+        PresetOption(stringResource(R.string.settings_card_depth_edge_subtle), 28),
+        PresetOption(stringResource(R.string.settings_card_depth_edge_balanced), 42),
+        PresetOption(stringResource(R.string.settings_card_depth_edge_bold), 56)
+    )
+    val sheenOptions = listOf(
+        PresetOption(stringResource(R.string.settings_card_depth_sheen_off), 0),
+        PresetOption(stringResource(R.string.settings_card_depth_sheen_soft), 10),
+        PresetOption(stringResource(R.string.settings_card_depth_sheen_bright), 16)
+    )
+    val coverageOptions = listOf(
+        PresetOption(stringResource(R.string.settings_card_depth_coverage_top), 0),
+        PresetOption(stringResource(R.string.settings_card_depth_coverage_half), 50),
+        PresetOption(stringResource(R.string.settings_card_depth_coverage_full), 100)
+    )
+    val surfaces = listOf(
+        stringResource(R.string.settings_card_depth_surface_posters) to CardDepthSurface.POSTERS,
+        stringResource(R.string.settings_card_depth_surface_continue_watching) to CardDepthSurface.CONTINUE_WATCHING,
+        stringResource(R.string.settings_card_depth_surface_episodes) to CardDepthSurface.EPISODE_CARDS,
+        stringResource(R.string.settings_card_depth_surface_cast) to CardDepthSurface.CAST,
+        stringResource(R.string.settings_card_depth_surface_trailers) to CardDepthSurface.TRAILERS
+    )
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp)
-            .background(
-                color = NuvioTheme.colors.BackgroundCard,
-                shape = RoundedCornerShape(NuvioTheme.radii.md)
-            )
-            .padding(10.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.7f)
-                .height(10.dp)
-                .background(NuvioTheme.colors.Border, RoundedCornerShape(999.dp))
+        CompactToggleRow(
+            title = stringResource(R.string.settings_card_depth_enabled),
+            subtitle = stringResource(R.string.settings_card_depth_description),
+            checked = style.enabled,
+            onToggle = { onEnabledChange(!style.enabled) },
+            onFocused = onFocused
         )
-        Box(
+
+        if (style.enabled) {
+            OptionRow(
+                title = stringResource(R.string.settings_card_depth_edge),
+                selectedValue = style.edgeStrength,
+                options = edgeOptions,
+                onSelected = onEdgeStrengthChange,
+                onFocused = onFocused
+            )
+            OptionRow(
+                title = stringResource(R.string.settings_card_depth_sheen),
+                selectedValue = style.sheenStrength,
+                options = sheenOptions,
+                onSelected = onSheenStrengthChange,
+                onFocused = onFocused
+            )
+            OptionRow(
+                title = stringResource(R.string.settings_card_depth_edge_coverage),
+                selectedValue = style.edgeCoverage,
+                options = coverageOptions,
+                onSelected = onEdgeCoverageChange,
+                onFocused = onFocused
+            )
+            SettingsActionRow(
+                title = stringResource(R.string.settings_card_depth_fine_tune),
+                subtitle = stringResource(R.string.settings_card_depth_fine_tune_hint_tv),
+                onClick = onFineTune,
+                trailingIcon = Icons.Default.Tune,
+                onFocused = onFocused
+            )
+            Text(
+                text = stringResource(R.string.settings_card_depth_apply_to),
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.colors.TextSecondary
+            )
+            surfaces.forEach { (title, surface) ->
+                CompactToggleRow(
+                    title = title,
+                    subtitle = null,
+                    checked = style.isSurfaceEnabled(surface),
+                    onToggle = {
+                        onSurfaceEnabledChange(surface, !style.isSurfaceEnabled(surface))
+                    },
+                    onFocused = onFocused
+                )
+            }
+        }
+
+        Button(
+            onClick = onReset,
+            modifier = Modifier.onFocusChanged {
+                if (it.isFocused) onFocused()
+            },
+            shape = ButtonDefaults.shape(shape = RoundedCornerShape(SettingsPillRadius)),
+            colors = ButtonDefaults.colors(
+                containerColor = NuvioTheme.colors.Background,
+                focusedContainerColor = NuvioTheme.colors.Background
+            ),
+            border = ButtonDefaults.border(
+                focusedBorder = Border(
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    shape = RoundedCornerShape(SettingsPillRadius)
+                )
+            )
+        ) {
+            Text(
+                text = stringResource(R.string.layout_reset_default),
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.colors.TextPrimary
+            )
+        }
+    }
+}
+
+@Composable
+private fun CardDepthFineTuneDialog(
+    style: CardDepthStyle,
+    onEdgeStrengthChange: (Int) -> Unit,
+    onSheenStrengthChange: (Int) -> Unit,
+    onEdgeCoverageChange: (Int) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        initialFocusRequester.requestFocus()
+    }
+
+    NuvioDialog(
+        onDismiss = onDismiss,
+        title = stringResource(R.string.settings_card_depth_fine_tune_title),
+        subtitle = stringResource(R.string.settings_card_depth_fine_tune_hint_tv),
+        width = 680.dp,
+        usePlatformDefaultWidth = false
+    ) {
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .background(NuvioTheme.colors.BackgroundElevated, RoundedCornerShape(10.dp))
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(3) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(10.dp)
-                        .background(NuvioTheme.colors.Border, RoundedCornerShape(999.dp))
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
+        ) {
+            CardDepthPreview(
+                style = style,
+                modifier = Modifier
+                    .width(260.dp)
+                    .aspectRatio(2f / 3f)
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+            ) {
+                SliderSettingsItem(
+                    icon = null,
+                    title = stringResource(R.string.settings_card_depth_edge_value),
+                    value = style.edgeStrength.coerceAtMost(70),
+                    valueText = "${style.edgeStrength}%",
+                    minValue = 0,
+                    maxValue = 70,
+                    step = 1,
+                    onValueChange = onEdgeStrengthChange,
+                    modifier = Modifier.focusRequester(initialFocusRequester)
+                )
+                SliderSettingsItem(
+                    icon = null,
+                    title = stringResource(R.string.settings_card_depth_sheen_value),
+                    value = style.sheenStrength.coerceAtMost(25),
+                    valueText = "${style.sheenStrength}%",
+                    minValue = 0,
+                    maxValue = 25,
+                    step = 1,
+                    onValueChange = onSheenStrengthChange
+                )
+                SliderSettingsItem(
+                    icon = null,
+                    title = stringResource(R.string.settings_card_depth_coverage_value),
+                    value = style.edgeCoverage,
+                    valueText = "${style.edgeCoverage}%",
+                    minValue = 0,
+                    maxValue = 100,
+                    step = 1,
+                    onValueChange = onEdgeCoverageChange
+                )
+                CardDepthResetButton(
+                    onClick = onReset,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -1283,17 +1847,62 @@ private fun LayoutPreviewPlaceholder() {
 }
 
 @Composable
-private fun CatalogChip(
-    catalogInfo: CatalogInfo,
-    isSelected: Boolean,
+private fun CardDepthResetButton(
     onClick: () -> Unit,
-    onFocused: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    SettingsChoiceChip(
-        label = catalogInfo.name,
-        selected = isSelected,
+    val shape = RoundedCornerShape(SettingsSecondaryCardRadius)
+    Button(
         onClick = onClick,
-        onFocused = onFocused
+        modifier = modifier,
+        shape = ButtonDefaults.shape(shape = shape),
+        colors = ButtonDefaults.colors(
+            containerColor = NuvioTheme.colors.Background,
+            focusedContainerColor = NuvioTheme.colors.Background
+        ),
+        border = ButtonDefaults.border(
+            border = Border(
+                border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
+                shape = shape
+            ),
+            focusedBorder = Border(
+                border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                shape = shape
+            )
+        )
+    ) {
+        Text(
+            text = stringResource(R.string.layout_reset_default),
+            style = MaterialTheme.typography.titleMedium,
+            color = NuvioTheme.colors.TextPrimary
+        )
+    }
+}
+
+@Composable
+private fun CardDepthPreview(
+    style: CardDepthStyle,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(NuvioTheme.radii.lg)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF33415C),
+                        Color(0xFF232D42),
+                        Color(0xFF141A28)
+                    )
+                )
+            )
+            .cardDepthVisual(
+                shape = shape,
+                edgeStrength = style.edgeStrength.toFloat(),
+                sheenStrength = style.sheenStrength.toFloat(),
+                edgeCoverage = style.edgeCoverage.toFloat()
+            )
     )
 }
 
@@ -1353,7 +1962,7 @@ private fun PosterCardStyleControls(
             ),
             border = ButtonDefaults.border(
                 focusedBorder = Border(
-                    border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 )
             )
@@ -1383,19 +1992,26 @@ private fun OptionRow(
         color = NuvioTheme.colors.TextSecondary
     )
 
+    val firstOptionFocusRequester = remember { FocusRequester() }
     LazyRow(
+        modifier = Modifier.settingsOptionRow(firstOptionFocusRequester),
         contentPadding = PaddingValues(end = NuvioTheme.spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
-        items(
+        itemsIndexed(
             items = options,
-            key = { it.value }
-        ) { option ->
+            key = { _, option -> option.value }
+        ) { optionIndex, option ->
             ValueChip(
                 label = option.label,
                 isSelected = option.value == selectedValue,
                 onClick = { onSelected(option.value) },
-                onFocused = onFocused
+                onFocused = onFocused,
+                modifier = if (optionIndex == 0) {
+                    Modifier.focusRequester(firstOptionFocusRequester)
+                } else {
+                    Modifier
+                }
             )
         }
     }
@@ -1406,9 +2022,11 @@ private fun ValueChip(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onFocused: () -> Unit
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     SettingsChoiceChip(
+        modifier = modifier,
         label = label,
         selected = isSelected,
         onClick = onClick,

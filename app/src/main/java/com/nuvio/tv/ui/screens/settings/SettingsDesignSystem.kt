@@ -4,6 +4,7 @@ package com.nuvio.tv.ui.screens.settings
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 
+import androidx.annotation.RawRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -11,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -45,9 +47,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -57,13 +62,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
@@ -80,6 +86,7 @@ import coil3.request.crossfade
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.SettingsUiStyle
 import com.nuvio.tv.ui.components.FocusMarqueeText
+import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
 import com.nuvio.tv.ui.theme.NuvioComponents
@@ -93,6 +100,19 @@ internal val SettingsRailItemHeight = NuvioComponents.tokens.settings.railItemHe
 internal val SettingsZenRowShape = RoundedCornerShape(12.dp)
 internal val SettingsHorizonRowShape = RoundedCornerShape(10.dp)
 internal val SettingsHorizonGroupShape = RoundedCornerShape(16.dp)
+
+/**
+ * Marks a row that holds several options side by side. Without it, moving into the row uses a
+ * geometric search and lands on whichever option sits nearest the full width row above, which is
+ * the middle one. With it, coming back to the row takes the option last used, and anything else
+ * takes [fallbackOption], which callers point at the first option.
+ *
+ * The fallback has to be named. Left at the default it hands the choice back to the same geometric
+ * search, which puts focus in the middle again.
+ */
+internal fun Modifier.settingsOptionRow(fallbackOption: FocusRequester): Modifier = this
+    .focusRestorer(fallbackOption)
+    .focusGroup()
 
 @Composable
 @androidx.compose.runtime.ReadOnlyComposable
@@ -125,6 +145,7 @@ internal data class SettingsPickerOption<T>(
 internal fun SettingsStandaloneScaffold(
     title: String,
     subtitle: String,
+    classicContainer: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -134,7 +155,8 @@ internal fun SettingsStandaloneScaffold(
     ) {
         SettingsWorkspaceSurface(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxSize(),
+            classicContainer = classicContainer
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -193,8 +215,7 @@ internal fun SettingsBrandPanel(
 
         Spacer(modifier = Modifier.height(26.dp))
 
-        Image(
-            painter = painterResource(id = R.drawable.app_logo_wordmark),
+        BrandWordmark(
             contentDescription = stringResource(R.string.cd_nuvio_logo),
             modifier = Modifier
                 .fillMaxWidth(0.9f)
@@ -236,9 +257,10 @@ internal fun SettingsBrandPanel(
 @Composable
 internal fun SettingsWorkspaceSurface(
     modifier: Modifier = Modifier,
+    classicContainer: Boolean = true,
     content: @Composable BoxScope.() -> Unit
 ) {
-    if (isFlatSettingsStyle()) {
+    if (isFlatSettingsStyle() || !classicContainer) {
         Box(
             modifier = modifier.padding(horizontal = NuvioTheme.spacing.md, vertical = NuvioTheme.spacing.sm),
             content = content
@@ -319,11 +341,11 @@ internal fun SettingsRailButton(
         } else {
             CardDefaults.border(
                 border = if (isSelected) Border(
-                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 ) else Border.None,
                 focusedBorder = Border(
-                    border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 )
             )
@@ -690,6 +712,10 @@ internal fun SettingsToggleRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 62.dp)
+            .focusProperties { canFocus = enabled }
+            .semantics {
+                if (!enabled) disabled()
+            }
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -706,7 +732,7 @@ internal fun SettingsToggleRow(
         } else {
             CardDefaults.border(
                 focusedBorder = Border(
-                    border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing.copy(alpha = contentAlpha)),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = contentAlpha),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 )
             )
@@ -761,7 +787,10 @@ internal fun SettingsActionRow(
     trailingIcon: ImageVector = Icons.Default.ChevronRight,
     titleTrailingIcon: ImageVector? = null,
     titleTrailingIconTint: Color = NuvioTheme.colors.TextPrimary,
-    leadingIcon: ImageVector? = null
+    leadingIcon: ImageVector? = null,
+    @RawRes leadingRawIconRes: Int? = null,
+    leadingArtworkSize: Dp = NuvioTheme.spacing.xl,
+    valueColor: Color = NuvioTheme.colors.TextSecondary
 ) {
     val contentAlpha = if (enabled) 1f else 0.4f
     var isFocused by remember { mutableStateOf(false) }
@@ -772,6 +801,10 @@ internal fun SettingsActionRow(
         modifier = modifier
             .padding(top = NuvioTheme.spacing.xxs, bottom = NuvioTheme.spacing.xxs)
             .fillMaxWidth()
+            .focusProperties { canFocus = enabled }
+            .semantics {
+                if (!enabled) disabled()
+            }
             .onFocusChanged { state ->
                 val nowFocused = state.isFocused
                 if (isFocused != nowFocused) {
@@ -788,7 +821,7 @@ internal fun SettingsActionRow(
         } else {
             CardDefaults.border(
                 focusedBorder = Border(
-                    border = BorderStroke(NuvioTheme.spacing.xxs, NuvioTheme.colors.FocusRing.copy(alpha = contentAlpha)),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs, alpha = contentAlpha),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 )
             )
@@ -803,7 +836,17 @@ internal fun SettingsActionRow(
                 .padding(horizontal = 18.dp, vertical = NuvioTheme.spacing.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (leadingIcon != null) {
+            if (leadingRawIconRes != null) {
+                Image(
+                    painter = rememberRawSvgPainter(leadingRawIconRes, leadingArtworkSize),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(leadingArtworkSize)
+                        .alpha(contentAlpha),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(modifier = Modifier.width(NuvioTheme.spacing.lg))
+            } else if (leadingIcon != null) {
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,
@@ -849,7 +892,7 @@ internal fun SettingsActionRow(
                 Text(
                     text = value,
                     style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.colors.TextSecondary.copy(alpha = contentAlpha),
+                    color = valueColor.copy(alpha = contentAlpha),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1168,11 +1211,11 @@ internal fun SettingsChoiceChip(
         } else {
             CardDefaults.border(
                 border = if (selected) Border(
-                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 ) else Border.None,
                 focusedBorder = Border(
-                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.FocusRing),
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
                     shape = RoundedCornerShape(SettingsPillRadius)
                 )
             )
@@ -1225,10 +1268,13 @@ private fun SettingsTogglePill(
 }
 
 @Composable
-private fun rememberRawSvgPainter(rawIconRes: Int): Painter {
+internal fun rememberRawSvgPainter(
+    @RawRes rawIconRes: Int,
+    targetSize: Dp = 24.dp
+): Painter {
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val sizePx = with(density) { NuvioTheme.spacing.xl.roundToPx() }
+    val sizePx = with(density) { targetSize.roundToPx() }
     val request = remember(rawIconRes, context, sizePx) {
         ImageRequest.Builder(context)
             .data(rawIconRes)

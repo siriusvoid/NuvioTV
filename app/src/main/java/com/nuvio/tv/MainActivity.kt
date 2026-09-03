@@ -56,6 +56,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,12 +65,14 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
@@ -84,6 +87,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -92,6 +96,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.nuvio.tv.core.runtime.PluginRuntimeHooks
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,47 +123,58 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
-import com.nuvio.tv.core.build.AppFeaturePolicy
+import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
 import com.nuvio.tv.core.profile.ProfileManager
-import com.nuvio.tv.core.sync.ProfileSettingsSyncService
 import com.nuvio.tv.core.sync.ProfileSyncService
 import com.nuvio.tv.core.sync.StartupSyncService
+import com.nuvio.tv.core.tracking.TrackingProgressRefreshCoordinator
+import com.nuvio.tv.core.tracking.TrackingRefreshIntent
 import com.nuvio.tv.data.local.AppOnboardingDataStore
 import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
 import com.nuvio.tv.data.local.ExperienceModeDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.ThemeDataStore
+import com.nuvio.tv.data.repository.MemberAccessRepository
 import com.nuvio.tv.data.remote.supabase.AvatarRepository
-import com.nuvio.tv.data.repository.TraktProgressService
 import com.nuvio.tv.domain.model.AppFont
 import com.nuvio.tv.domain.model.AppTheme
 import com.nuvio.tv.domain.model.AuthState
+import com.nuvio.tv.domain.model.CardDepthStyle
+import com.nuvio.tv.domain.model.CosmeticEntitlement
 import com.nuvio.tv.domain.model.DiscoverLocation
 import com.nuvio.tv.domain.model.ExperienceMode
+import com.nuvio.tv.domain.model.MemberAccess
 import com.nuvio.tv.domain.model.SettingsUiStyle
+import com.nuvio.tv.domain.model.resolveAppTheme
 import com.nuvio.tv.domain.deeplink.AppDeepLink
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.ui.components.NuvioScrollDefaults
+import com.nuvio.tv.ui.components.BrandWordmark
+import com.nuvio.tv.ui.components.LocalCardDepthStyle
 import com.nuvio.tv.ui.components.ProfileAvatarCircle
 import com.nuvio.tv.ui.navigation.NuvioNavHost
 import com.nuvio.tv.ui.navigation.Screen
+import com.nuvio.tv.ui.membership.LocalMemberAccess
 import com.nuvio.tv.ui.screens.account.AuthQrSignInScreen
 import com.nuvio.tv.ui.screens.addon.EssentialAddonSetupScreen
 import com.nuvio.tv.ui.screens.profile.ProfileSelectionScreen
 import com.nuvio.tv.ui.theme.NuvioComponents
+import com.nuvio.tv.ui.theme.NuvioLayout
 import com.nuvio.tv.ui.theme.NuvioMotion
 import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.theme.NuvioRadii
 import com.nuvio.tv.ui.theme.NuvioStrokes
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.theme.ThemeColors
+import com.nuvio.tv.ui.theme.accentBrush
 import com.nuvio.tv.ui.util.LocalFastHorizontalNavigationEnabled
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.rememberDrawerItemFocusRequesters
 import com.nuvio.tv.updater.UpdateViewModel
-import com.nuvio.tv.updater.ui.UpdatePromptDialog
+import com.nuvio.tv.updater.ui.UpdateBannerHost
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
@@ -175,6 +191,8 @@ val LocalContentFocusRequester = compositionLocalOf { FocusRequester.Default }
 
 private const val SIDEBAR_AUTO_COLLAPSE_DELAY_MS = 4_000L
 
+private const val MAX_SUPPORTED_FONT_SCALE = 1.15f
+
 data class DrawerItem(
     val route: String,
     val label: String,
@@ -184,6 +202,7 @@ data class DrawerItem(
 
 private data class MainUiPrefs(
     val theme: AppTheme = AppTheme.WHITE,
+    val memberAccess: MemberAccess = MemberAccess.None,
     val font: AppFont = AppFont.INTER,
     val amoledMode: Boolean = false,
     val amoledSurfacesMode: Boolean = false,
@@ -198,11 +217,12 @@ private data class MainUiPrefs(
     val smoothBringIntoViewEnabled: Boolean = true,
     val fastHorizontalNavigationEnabled: Boolean = false,
     val composeHighlighterEnabled: Boolean = false,
-    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC
+    val settingsUiStyle: SettingsUiStyle = SettingsUiStyle.CLASSIC,
+    val cardDepthStyle: CardDepthStyle = CardDepthStyle()
 )
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var themeDataStore: ThemeDataStore
@@ -214,19 +234,19 @@ class MainActivity : ComponentActivity() {
     lateinit var experienceModeDataStore: ExperienceModeDataStore
 
     @Inject
+    lateinit var memberAccessRepository: MemberAccessRepository
+
+    @Inject
     lateinit var addonRepository: AddonRepository
 
     @Inject
-    lateinit var traktProgressService: TraktProgressService
+    lateinit var trackingProgressRefreshCoordinator: TrackingProgressRefreshCoordinator
 
     @Inject
     lateinit var startupSyncService: StartupSyncService
 
     @Inject
     lateinit var androidTvChannelSyncService: com.nuvio.tv.core.sync.androidtv.AndroidTvChannelSyncService
-
-    @Inject
-    lateinit var profileSettingsSyncService: ProfileSettingsSyncService
 
     @Inject
     lateinit var profileSyncService: ProfileSyncService
@@ -236,6 +256,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authManager: AuthManager
+
+    @Inject
+    lateinit var deviceSessionRegistration: DeviceSessionRegistration
 
     @Inject
     lateinit var authSessionNoticeDataStore: AuthSessionNoticeDataStore
@@ -256,6 +279,7 @@ class MainActivity : ComponentActivity() {
     lateinit var deepLinkHandler: DeepLinkHandler
 
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
+    private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
     private lateinit var jankStats: JankStats
 
@@ -308,6 +332,15 @@ class MainActivity : ComponentActivity() {
         // Extract extras set by the Continue Watching launcher channel preview programs.
         val launchContentId = intent?.getStringExtra("contentId")
         val launchContentType = intent?.getStringExtra("contentType")
+        val launchMode = intent?.getStringExtra("launchMode")
+        val launchVideoId = intent?.getStringExtra("videoId")
+        val launchName = intent?.getStringExtra("name")
+        val launchPoster = intent?.getStringExtra("poster")
+        val launchBackdrop = intent?.getStringExtra("backdrop")
+        val launchLogo = intent?.getStringExtra("logo")
+        val launchSeason = intent?.getIntExtra("season", -1)?.takeIf { it >= 0 }
+        val launchEpisode = intent?.getIntExtra("episode", -1)?.takeIf { it >= 0 }
+        val launchEpisodeTitle = intent?.getStringExtra("episodeTitle")
         captureDeepLinkIntent(intent)
 
         setContent {
@@ -374,9 +407,14 @@ class MainActivity : ComponentActivity() {
             }
 
             var avatarCatalog by remember { mutableStateOf(emptyList<com.nuvio.tv.data.remote.supabase.AvatarCatalogItem>()) }
+            val avatarMemberAccess by memberAccessRepository.access.collectAsState()
+            val hasProfileAvatarAccess = avatarMemberAccess.entitlements
+                .includes(CosmeticEntitlement.PROFILE_AVATARS)
 
-            LaunchedEffect(Unit) {
-                avatarCatalog = runCatching { avatarRepository.getAvatarCatalog() }
+            LaunchedEffect(hasProfileAvatarAccess) {
+                avatarCatalog = runCatching {
+                    avatarRepository.getAvatarCatalog(hasProfileAvatarAccess)
+                }
                     .getOrDefault(emptyList())
             }
 
@@ -385,19 +423,31 @@ class MainActivity : ComponentActivity() {
                     ?: activeProfile?.avatarId?.let { avatarRepository.getAvatarImageUrl(it, avatarCatalog) }
             }
 
-            val mainUiPrefsFlow = remember(themeDataStore, layoutPreferenceDataStore, experienceModeDataStore) {
+            val mainUiPrefsFlow = remember(
+                themeDataStore,
+                layoutPreferenceDataStore,
+                experienceModeDataStore,
+                memberAccessRepository
+            ) {
+                val activeThemeFlow = combine(
+                    themeDataStore.selectedThemePreference,
+                    memberAccessRepository.access
+                ) { selectedTheme, memberAccess ->
+                    resolveAppTheme(selectedTheme, memberAccess.entitlements) to memberAccess
+                }
                 // Group flows into two batches to reduce intermediate flow allocations.
                 // Each batch uses a single combine() instead of chaining .combine() calls,
                 // which avoids N intermediate flow objects and redundant emissions on startup.
                 val themeAndExperienceFlow = combine(
-                    themeDataStore.selectedTheme,
+                    activeThemeFlow,
                     themeDataStore.selectedFont,
                     themeDataStore.amoledMode,
                     themeDataStore.amoledSurfacesMode,
                     experienceModeDataStore.mode,
-                ) { theme, font, amoledMode, amoledSurfacesMode, experienceMode ->
+                ) { themeAndAccess, font, amoledMode, amoledSurfacesMode, experienceMode ->
                     MainUiPrefs(
-                        theme = theme,
+                        theme = themeAndAccess.first,
+                        memberAccess = themeAndAccess.second,
                         font = font,
                         amoledMode = amoledMode,
                         amoledSurfacesMode = amoledSurfacesMode,
@@ -435,7 +485,12 @@ class MainActivity : ComponentActivity() {
                         settingsUiStyle = settingsUiStyle,
                     )
                 }
-                combine(themeAndExperienceFlow, layoutAndFeaturesFlow, extraFeaturesFlow) { themePrefs, layoutPrefs, extraPrefs ->
+                combine(
+                    themeAndExperienceFlow,
+                    layoutAndFeaturesFlow,
+                    extraFeaturesFlow,
+                    layoutPreferenceDataStore.cardDepthStyle
+                ) { themePrefs, layoutPrefs, extraPrefs, cardDepthStyle ->
                     themePrefs.copy(
                         hasChosenLayout = layoutPrefs.hasChosenLayout,
                         sidebarCollapsed = layoutPrefs.sidebarCollapsed,
@@ -447,6 +502,7 @@ class MainActivity : ComponentActivity() {
                         fastHorizontalNavigationEnabled = extraPrefs.fastHorizontalNavigationEnabled,
                         composeHighlighterEnabled = extraPrefs.composeHighlighterEnabled,
                         settingsUiStyle = extraPrefs.settingsUiStyle,
+                        cardDepthStyle = cardDepthStyle
                     )
                 }
             }
@@ -469,10 +525,20 @@ class MainActivity : ComponentActivity() {
                 } else {
                     defaultBringIntoViewSpec
                 }
+                val systemDensity = LocalDensity.current
+                val clampedFontScaleDensity = remember(systemDensity) {
+                    Density(
+                        density = systemDensity.density,
+                        fontScale = systemDensity.fontScale.coerceAtMost(MAX_SUPPORTED_FONT_SCALE)
+                    )
+                }
                 CompositionLocalProvider(
+                    LocalDensity provides clampedFontScaleDensity,
                     LocalBringIntoViewSpec provides bringIntoViewSpec,
                     LocalFastHorizontalNavigationEnabled provides mainUiPrefs.fastHorizontalNavigationEnabled,
                     LocalRecompositionHighlighterEnabled provides (BuildConfig.IS_DEBUG_BUILD && mainUiPrefs.composeHighlighterEnabled),
+                    LocalCardDepthStyle provides mainUiPrefs.cardDepthStyle,
+                    LocalMemberAccess provides mainUiPrefs.memberAccess,
                     com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool
                 ) {
                 Surface(
@@ -628,14 +694,11 @@ class MainActivity : ComponentActivity() {
                     // the internal onPlaybackEnded path uses. Collected from the root composable
                     // so it survives StreamScreen's self-pop and a process kill (metadata is
                     // recovered from disk and the event replayed).
-                    var lastHandledAutoNextMs by rememberSaveable { mutableStateOf(0L) }
                     LaunchedEffect(navController) {
                         externalPlaybackTracker.autoPlayNext.collect { next ->
-                            // Skip a value replayed after a config change; act only on newer events.
-                            if (next.requestedAtMs <= lastHandledAutoNextMs) {
+                            if (!externalPlaybackTracker.claimAutoPlayNextNavigation(next)) {
                                 return@collect
                             }
-                            lastHandledAutoNextMs = next.requestedAtMs
                             Log.d(
                                 "MainActivity",
                                 "autoPlayNext received: S${next.nextSeason}E${next.nextEpisode} " +
@@ -668,10 +731,67 @@ class MainActivity : ComponentActivity() {
                     // Navigate to content when launched from the Continue Watching channel row.
                     LaunchedEffect(navController) {
                         if (launchContentId != null && launchContentType != null && layoutChosen) {
+                            if (launchMode == "stream" && launchVideoId != null && launchName != null) {
+                                navController.navigate(
+                                    Screen.Stream.createRoute(
+                                        videoId = launchVideoId,
+                                        contentType = launchContentType,
+                                        title = launchName,
+                                        poster = launchPoster,
+                                        backdrop = launchBackdrop,
+                                        logo = launchLogo,
+                                        season = launchSeason,
+                                        episode = launchEpisode,
+                                        episodeName = launchEpisodeTitle,
+                                        contentId = launchContentId,
+                                        contentName = launchName,
+                                        returnToDetailOnBack = launchContentType.equals("series", ignoreCase = true),
+                                        returnToHomeOnBack = true
+                                    )
+                                )
+                            } else {
+                                navController.navigate(
+                                    Screen.Detail.createRoute(
+                                        itemId = launchContentId,
+                                        itemType = launchContentType
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    val pendingLaunch by pendingLaunchIntent.collectAsState()
+                    LaunchedEffect(navController, layoutChosen, pendingLaunch) {
+                        val intent = pendingLaunch ?: return@LaunchedEffect
+                        if (!layoutChosen) return@LaunchedEffect
+                        pendingLaunchIntent.value = null
+                        val contentId = intent.getStringExtra("contentId") ?: return@LaunchedEffect
+                        val contentType = intent.getStringExtra("contentType") ?: return@LaunchedEffect
+                        val videoId = intent.getStringExtra("videoId")
+                        val name = intent.getStringExtra("name")
+                        if (videoId != null && name != null) {
+                            navController.navigate(
+                                Screen.Stream.createRoute(
+                                    videoId = videoId,
+                                    contentType = contentType,
+                                    title = name,
+                                    poster = intent.getStringExtra("poster"),
+                                    backdrop = intent.getStringExtra("backdrop"),
+                                    logo = intent.getStringExtra("logo"),
+                                    season = intent.getIntExtra("season", -1).takeIf { it >= 0 },
+                                    episode = intent.getIntExtra("episode", -1).takeIf { it >= 0 },
+                                    episodeName = intent.getStringExtra("episodeTitle"),
+                                    contentId = contentId,
+                                    contentName = name,
+                                    returnToDetailOnBack = contentType.equals("series", ignoreCase = true),
+                                    returnToHomeOnBack = true
+                                )
+                            )
+                        } else {
                             navController.navigate(
                                 Screen.Detail.createRoute(
-                                    itemId = launchContentId,
-                                    itemType = launchContentType
+                                    itemId = contentId,
+                                    itemType = contentType
                                 )
                             )
                         }
@@ -799,79 +919,99 @@ class MainActivity : ComponentActivity() {
                     }?.route
                     val selectedDrawerItem = drawerItems.firstOrNull { it.route == selectedDrawerRoute } ?: drawerItems.first()
 
-                    if (modernSidebarEnabled) {
-                        ModernSidebarScaffold(
-                            navController = navController,
-                            startDestination = startDestination,
-                            currentRoute = currentRoute,
-                            rootRoutes = rootRoutes,
-                            drawerItems = drawerItems,
-                            selectedDrawerRoute = selectedDrawerRoute,
-                            selectedDrawerItem = selectedDrawerItem,
-                            sidebarCollapsed = sidebarCollapsed,
-                            modernSidebarBlurEnabled = modernSidebarBlurEnabled,
-                            hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
-                            activeProfileName = activeProfile?.name ?: "",
-                            activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                            activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                            showProfileSelector = profiles.size > 1,
-                            onSwitchProfile = { hasSelectedProfileThisSession = false },
-                            onNavigate = { optimisticRoute = it },
-                            onExitApp = {
-                                finishAffinity()
-                                finishAndRemoveTask()
+                    val confirmExitEnabled by profileManager.confirmExitEnabled.collectAsState()
+                    var backPressedOnce by remember { mutableStateOf(false) }
+                    LaunchedEffect(backPressedOnce) {
+                        if (backPressedOnce) {
+                            delay(2000L)
+                            backPressedOnce = false
+                        }
+                    }
+                    val handleExitApp: () -> Unit = {
+                        if (!confirmExitEnabled || backPressedOnce) {
+                            finishAffinity()
+                            finishAndRemoveTask()
+                            if (confirmExitEnabled) {
+                                // Kill the process to free RAM on low-memory devices.
+                                android.os.Process.killProcess(android.os.Process.myPid())
                             }
-                        )
-                    } else {
-                        LegacySidebarScaffold(
-                            navController = navController,
-                            startDestination = startDestination,
-                            currentRoute = currentRoute,
-                            rootRoutes = rootRoutes,
-                            drawerItems = drawerItems,
-                            selectedDrawerRoute = selectedDrawerRoute,
-                            sidebarCollapsed = sidebarCollapsed,
-                            hideBuiltInHeaders = false,
-                            activeProfileName = activeProfile?.name ?: "",
-                            activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
-                            activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
-                            showProfileSelector = profiles.size > 1,
-                            onSwitchProfile = { hasSelectedProfileThisSession = false },
-                            onNavigate = { optimisticRoute = it },
-                            onExitApp = {
-                                finishAffinity()
-                                finishAndRemoveTask()
-                            }
-                        )
+                        } else {
+                            backPressedOnce = true
+                            Toast.makeText(this@MainActivity, getString(R.string.confirm_exit_toast), Toast.LENGTH_SHORT).show()
+                        }
                     }
 
-                    if (AppFeaturePolicy.inAppUpdatesEnabled && !BuildConfig.DEBUG) {
-                        val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
-                        val updateState by updateViewModel.uiState.collectAsState()
-                        UpdatePromptDialog(
-                            state = updateState,
-                            onDismiss = { updateViewModel.dismissDialog() },
-                            onDownload = { updateViewModel.downloadUpdate() },
-                            onInstall = { updateViewModel.installUpdateOrRequestPermission() },
-                            onIgnore = { updateViewModel.ignoreThisVersion() },
-                            onOpenUnknownSources = { updateViewModel.openUnknownSourcesSettings() }
-                        )
-                    }
+                    val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
+                    val updateState by updateViewModel.uiState.collectAsState()
+                    val updateBannerState = updateState.copy(
+                        showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true
+                    )
 
-                    // Loader shown while an external episode auto-advances. Drawn last (on top
-                    // of the NavHost) to hide the app cold-starting while the next source resolves.
-                    val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
-                    autoNextOverlay?.let { ov ->
-                        // Back is intercepted at the Activity level (dispatchKeyEvent) so it reliably
-                        // beats the destination screen's BackHandler.
-                        com.nuvio.tv.ui.screens.player.LoadingOverlay(
-                            visible = true,
-                            backdropUrl = ov.backdrop,
-                            logoUrl = ov.logo,
-                            title = ov.title,
-                            message = stringResource(R.string.external_auto_next_loading),
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    UpdateBannerHost(
+                        state = updateBannerState,
+                        onDismissBanner = updateViewModel::dismissBanner,
+                        onDownload = updateViewModel::downloadUpdate,
+                        onInstall = updateViewModel::installUpdateOrRequestPermission,
+                        onDismissUnknownSources = updateViewModel::dismissUnknownSourcesDialog,
+                        onOpenUnknownSources = updateViewModel::openUnknownSourcesSettings,
+                        onFeedbackShown = updateViewModel::consumeFeedbackMessage
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (modernSidebarEnabled) {
+                                ModernSidebarScaffold(
+                                    longPressBackHeld = longPressBackHeld,
+                                    navController = navController,
+                                    startDestination = startDestination,
+                                    currentRoute = currentRoute,
+                                    rootRoutes = rootRoutes,
+                                    drawerItems = drawerItems,
+                                    selectedDrawerRoute = selectedDrawerRoute,
+                                    selectedDrawerItem = selectedDrawerItem,
+                                    sidebarCollapsed = sidebarCollapsed,
+                                    modernSidebarBlurEnabled = modernSidebarBlurEnabled,
+                                    hideBuiltInHeaders = hideBuiltInHeadersForFloatingPill,
+                                    activeProfileName = activeProfile?.name ?: "",
+                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                    showProfileSelector = profiles.size > 1,
+                                    onSwitchProfile = { hasSelectedProfileThisSession = false },
+                                    onNavigate = { optimisticRoute = it },
+                                    onExitApp = handleExitApp
+                                )
+                            } else {
+                                LegacySidebarScaffold(
+                                    longPressBackHeld = longPressBackHeld,
+                                    navController = navController,
+                                    startDestination = startDestination,
+                                    currentRoute = currentRoute,
+                                    rootRoutes = rootRoutes,
+                                    drawerItems = drawerItems,
+                                    selectedDrawerRoute = selectedDrawerRoute,
+                                    sidebarCollapsed = sidebarCollapsed,
+                                    hideBuiltInHeaders = false,
+                                    activeProfileName = activeProfile?.name ?: "",
+                                    activeProfileColorHex = activeProfile?.avatarColorHex ?: "#1E88E5",
+                                    activeProfileAvatarImageUrl = activeProfileAvatarImageUrl,
+                                    showProfileSelector = profiles.size > 1,
+                                    onSwitchProfile = { hasSelectedProfileThisSession = false },
+                                    onNavigate = { optimisticRoute = it },
+                                    onExitApp = handleExitApp
+                                )
+                            }
+
+                            val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()
+                            autoNextOverlay?.let { ov ->
+                                com.nuvio.tv.ui.screens.player.LoadingOverlay(
+                                    visible = true,
+                                    backdropUrl = ov.backdrop,
+                                    logoUrl = ov.logo,
+                                    title = ov.title,
+                                    message = ov.message ?: stringResource(R.string.external_auto_next_loading),
+                                    progress = ov.progress,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -891,14 +1031,19 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
-        startupSyncService.requestForegroundSync()
+        memberAccessRepository.refreshIfStale()
         lifecycleScope.launch {
-            if (isFirstResumeAfterCreate) {
+            deviceSessionRegistration.requestForegroundRegistration()
+            startupSyncService.requestForegroundSync()
+        }
+        lifecycleScope.launch {
+            val refreshIntent = if (isFirstResumeAfterCreate) {
                 isFirstResumeAfterCreate = false
-                traktProgressService.invalidateAndRefresh()
+                TrackingRefreshIntent.INVALIDATED
             } else {
-                traktProgressService.refreshNow()
+                TrackingRefreshIntent.AUTOMATIC
             }
+            trackingProgressRefreshCoordinator.refreshConnected(refreshIntent)
         }
     }
 
@@ -906,11 +1051,19 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         captureDeepLinkIntent(intent)
+        captureLaunchIntent(intent)
     }
 
     private fun captureDeepLinkIntent(intent: Intent?) {
         val url = intent?.dataString?.trim()?.takeIf(String::isNotBlank) ?: return
         pendingDeepLinkUrl.value = url
+    }
+
+    private fun captureLaunchIntent(intent: Intent?) {
+        val contentId = intent?.getStringExtra("contentId") ?: return
+        val launchMode = intent.getStringExtra("launchMode") ?: return
+        if (launchMode != "stream") return
+        pendingLaunchIntent.value = intent
     }
 
     override fun onPause() {
@@ -921,7 +1074,19 @@ class MainActivity : ComponentActivity() {
     // Intercept Back at the Activity level, before any Compose BackHandler, so the auto-next loader
     // can always be dismissed. Compose back-dispatch ordering kept putting the destination screen's
     // handler above the loader's, so Back never reached it.
+    // Tracks whether a long-press Back sequence is in progress. When true, all Back
+    // key events are consumed at the Activity level so that repeated DOWN events from a
+    // held Back key don't cascade through Compose BackHandlers (e.g. opening the sidebar
+    // and then immediately exiting the app).
+    val longPressBackHeld = mutableStateOf(false)
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (longPressBackHeld.value) {
+                if (event.action == KeyEvent.ACTION_UP) longPressBackHeld.value = false
+                return true
+            }
+        }
         if (event.keyCode == KeyEvent.KEYCODE_BACK &&
             externalPlaybackTracker.autoNextOverlay.value != null
         ) {
@@ -942,11 +1107,11 @@ class MainActivity : ComponentActivity() {
         externalPlaybackTracker.raiseAutoNextOverlayOnReturn()
         super.onStart()
         startupSyncService.startPeriodicSurfacePulls()
-        profileSettingsSyncService.requestForegroundPull()
         androidTvChannelSyncService.onForegroundChanged(true)
     }
 
     override fun onStop() {
+        externalPlaybackTracker.onExternalPlayerCoveredApp()
         super.onStop()
         startupSyncService.stopPeriodicSurfacePulls()
         // App going to background (e.g. user returning to the launcher): reconcile the
@@ -984,6 +1149,7 @@ private fun SidebarFocusRecoveryEffect(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun LegacySidebarScaffold(
+    longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
@@ -1006,6 +1172,7 @@ private fun LegacySidebarScaffold(
     val showSidebar = currentRoute in rootRoutes
 
     LaunchedEffect(currentRoute) {
+        longPressBackHeld.value = false
         drawerState.setValue(DrawerValue.Closed)
     }
 
@@ -1030,6 +1197,7 @@ private fun LegacySidebarScaffold(
     }
 
     BackHandler(enabled = currentRoute in rootRoutes && drawerState.currentValue == DrawerValue.Open) {
+        if (longPressBackHeld.value) return@BackHandler
         onExitApp()
     }
 
@@ -1151,8 +1319,7 @@ private fun LegacySidebarScaffold(
                                     }
                                 }
                             } else {
-                                Image(
-                                    painter = painterResource(id = R.drawable.app_logo_wordmark),
+                                BrandWordmark(
                                     contentDescription = stringResource(R.string.app_name),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1203,7 +1370,11 @@ private fun LegacySidebarScaffold(
         }
     ) {
         val contentStartPadding by animateDpAsState(
-            targetValue = if (showSidebar) closedDrawerWidth else NuvioTheme.spacing.none,
+            targetValue = if (showSidebar && !sidebarCollapsed) {
+                NuvioLayout.tokens.sidebarContentOffset
+            } else {
+                NuvioTheme.spacing.none
+            },
             animationSpec = tween(NuvioMotion.tokens.durations.medium),
             label = "contentStartPadding"
         )
@@ -1211,6 +1382,31 @@ private fun LegacySidebarScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = contentStartPadding)
+                .onPreviewKeyEvent { keyEvent ->
+                    // Long-press Back on a root route directly opens the sidebar,
+                    // bypassing the "scroll row to start" BackHandler in home content.
+                    if (keyEvent.key == Key.Back) {
+                        if (
+                            keyEvent.type == KeyEventType.KeyDown &&
+                            showSidebar &&
+                            drawerState.currentValue == DrawerValue.Closed &&
+                            currentRoute in rootRoutes &&
+                            keyEvent.nativeKeyEvent.isLongPress
+                        ) {
+                            if (!longPressBackHeld.value) {
+                                longPressBackHeld.value = true
+                                pendingSidebarFocusRequest = true
+                                drawerState.setValue(DrawerValue.Open)
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                        if (longPressBackHeld.value) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
+                            return@onPreviewKeyEvent true
+                        }
+                    }
+                    false
+                }
                 .onKeyEvent { keyEvent ->
                     val openKey = if (isRtl) Key.DirectionRight else Key.DirectionLeft
                     if (
@@ -1283,6 +1479,11 @@ private fun LegacySidebarButton(
         },
         label = "legacySidebarItemIconTint"
     )
+    val selectedCollapsedIconBrush = if (selected && !expanded) {
+        ThemeColors.getColorPalette(NuvioTheme.currentTheme).accentBrush()
+    } else {
+        null
+    }
     val itemScale by animateFloatAsState(
         targetValue = if (isFocused && expanded) 1.1f else 1f,
         animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.fast, easing = NuvioMotion.tokens.easings.standard),
@@ -1319,6 +1520,7 @@ private fun LegacySidebarButton(
             iconRes = iconRes,
             icon = icon,
             tint = iconTint,
+            brush = selectedCollapsedIconBrush,
             modifier = Modifier
                 .size(NuvioComponents.tokens.sidebar.iconSize)
                 .align(Alignment.CenterStart)
@@ -1340,6 +1542,7 @@ private fun LegacySidebarButton(
 
 @Composable
 private fun ModernSidebarScaffold(
+    longPressBackHeld: MutableState<Boolean>,
     navController: NavHostController,
     startDestination: String,
     currentRoute: String?,
@@ -1404,6 +1607,7 @@ private fun ModernSidebarScaffold(
     }
 
     BackHandler(enabled = currentRoute in rootRoutes && isSidebarExpanded && !sidebarCollapsePending) {
+        if (longPressBackHeld.value) return@BackHandler
         onExitApp()
     }
 
@@ -1580,11 +1784,47 @@ private fun ModernSidebarScaffold(
         sidebarOwnsFocus = showSidebar && isSidebarExpanded
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { keyEvent ->
+                // Consume all Back key events after long-press until released,
+                // preventing the exit-app BackHandler from firing during the hold.
+                if (longPressBackHeld.value && keyEvent.key == Key.Back) {
+                    if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
+                    return@onPreviewKeyEvent true
+                }
+                false
+            }
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .onPreviewKeyEvent { keyEvent ->
+                    // Long-press Back on a root route directly opens the sidebar,
+                    // bypassing the "scroll row to start" BackHandler in home content.
+                    if (keyEvent.key == Key.Back) {
+                        if (
+                            keyEvent.type == KeyEventType.KeyDown &&
+                            showSidebar &&
+                            !isSidebarExpanded &&
+                            !sidebarCollapsePending &&
+                            currentRoute in rootRoutes &&
+                            keyEvent.nativeKeyEvent.isLongPress
+                        ) {
+                            if (!longPressBackHeld.value) {
+                                longPressBackHeld.value = true
+                                isSidebarExpanded = true
+                                sidebarCollapsePending = false
+                                pendingSidebarFocusRequest = true
+                            }
+                            return@onPreviewKeyEvent true
+                        }
+                        if (longPressBackHeld.value) {
+                            if (keyEvent.type == KeyEventType.KeyUp) longPressBackHeld.value = false
+                            return@onPreviewKeyEvent true
+                        }
+                    }
                     if (
                         isSidebarExpanded &&
                         !sidebarCollapsePending &&
@@ -1868,7 +2108,12 @@ private fun navigateToDrawerRoute(
     if (currentRoute == targetRoute) {
         if (targetRoute == Screen.Home.route) {
             // Scroll Home to top by clearing saved focus/scroll state on the ViewModel.
-            val homeEntry = navController.getBackStackEntry(Screen.Home.route)
+            val homeEntry = try {
+                navController.getBackStackEntry(Screen.Home.route)
+            } catch (_: IllegalArgumentException) {
+                // "home" not yet on the back stack (e.g. nav graph not fully initialized).
+                return
+            }
             val homeViewModel = androidx.lifecycle.ViewModelProvider(homeEntry)[com.nuvio.tv.ui.screens.home.HomeViewModel::class.java]
             homeViewModel.requestScrollToTop()
         }
@@ -1897,21 +2142,35 @@ private fun DrawerItemIcon(
     iconRes: Int?,
     icon: ImageVector?,
     modifier: Modifier = Modifier,
-    tint: Color = androidx.tv.material3.LocalContentColor.current
+    tint: Color = androidx.tv.material3.LocalContentColor.current,
+    brush: Brush? = null
 ) {
+    val iconModifier = if (brush == null) {
+        modifier
+    } else {
+        modifier
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithCache {
+                onDrawWithContent {
+                    drawContent()
+                    drawRect(brush = brush, blendMode = BlendMode.SrcIn)
+                }
+            }
+    }
+    val iconTint = if (brush == null) tint else Color.White
     when {
         icon != null -> Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = tint,
-            modifier = modifier
+            tint = iconTint,
+            modifier = iconModifier
         )
 
         iconRes != null -> Icon(
             painter = rememberRawSvgPainter(iconRes),
             contentDescription = null,
-            tint = tint,
-            modifier = modifier
+            tint = iconTint,
+            modifier = iconModifier
         )
     }
 }

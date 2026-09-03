@@ -1,7 +1,9 @@
 package com.nuvio.tv.domain.repository
 
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Repository for managing watch progress data.
@@ -17,6 +19,9 @@ interface WatchProgressRepository {
      * Get items currently in progress (not completed, suitable for "Continue Watching")
      */
     val continueWatching: Flow<List<WatchProgress>>
+
+    val watchedItems: Flow<List<WatchedItem>>
+        get() = flowOf(emptyList())
     
     /**
      * Get watch progress for a specific content item (movie or series)
@@ -54,11 +59,7 @@ interface WatchProgressRepository {
      */
     fun observeOptimisticContinueWatchingUpdates(): Flow<WatchProgress>
 
-    /**
-     * Remap a Trakt episode seed to addon numbering (for anime with different season structure).
-     * Returns the remapped progress or the original if no remapping is needed.
-     */
-    suspend fun remapEpisodeSeed(progress: WatchProgress): WatchProgress
+    suspend fun prepareNextUpSeed(progress: WatchProgress): WatchProgress
 
 
     /**
@@ -68,6 +69,19 @@ interface WatchProgressRepository {
     fun isWatched(contentId: String, videoId: String? = null, season: Int? = null, episode: Int? = null): Flow<Boolean>
     
     fun observeWatchedMovieIds(): Flow<Set<String>>
+
+    /**
+     * Apply an optimistic addition or removal to the watched movie IDs set.
+     * Used for immediate badge feedback before the backend confirms the change.
+     * Pass [add] = true to mark as watched, false to unmark.
+     * The [ids] should include all ID variants for the content (e.g. "tmdb:123", "tt1234567").
+     */
+    fun applyOptimisticWatchedMovie(ids: Set<String>, add: Boolean) {}
+
+    /**
+     * Revert a previous optimistic update (e.g. on failure).
+     */
+    fun revertOptimisticWatchedMovie(ids: Set<String>, add: Boolean) {}
 
     /**
      * Returns per-show watched episodes from the active source.
@@ -81,6 +95,8 @@ interface WatchProgressRepository {
      */
     suspend fun getShowIdSiblings(): Map<String, Set<String>>
 
+    fun isWatchedByVideoId(videoId: String, episode: Int): Boolean? = null
+
     /**
      * Save or update watch progress
      */
@@ -91,20 +107,14 @@ interface WatchProgressRepository {
      */
     suspend fun saveProgressBatch(progressList: List<WatchProgress>, syncRemote: Boolean = true)
     
-    /**
-     * Remove watch progress (playback only, does not affect Trakt history)
-     */
     suspend fun removeProgress(contentId: String, season: Int? = null, episode: Int? = null)
 
-    /**
-     * Remove from watch history (marks as unwatched on Trakt)
-     */
     suspend fun removeFromHistory(contentId: String, videoId: String? = null, season: Int? = null, episode: Int? = null)
 
     /**
      * Mark content as completed
      */
-    suspend fun markAsCompleted(progress: WatchProgress, syncRemoteToTrakt: Boolean = true)
+    suspend fun markAsCompleted(progress: WatchProgress, broadcastTrackingHistory: Boolean = true)
 
     /**
      * Mark multiple episodes as completed in a single batch operation.
@@ -118,7 +128,7 @@ interface WatchProgressRepository {
     suspend fun removeFromHistoryBatch(
         contentId: String,
         videoId: String?,
-        episodes: List<Pair<Int, Int>>
+        episodes: List<Triple<Int, Int, String?>>
     )
     
     /**
@@ -131,8 +141,9 @@ interface WatchProgressRepository {
      */
     fun isDroppedShow(contentId: String): Boolean
 
-    /**
-     * Returns true if Trakt is both configured AND authenticated as the active progress source.
-     */
-    suspend fun isTraktProgressActive(): Boolean
+    fun hasActiveTrackingProgressProvider(): Boolean
+    fun activeProviderOwnsCompletedHistoryProjection(): Boolean
+    fun activeProviderContinueWatchingCutoffEpochMs(daysCap: Int, nowEpochMs: Long): Long?
+    fun shouldUseAsNextUpSeed(progress: WatchProgress, nowEpochMs: Long): Boolean
+    suspend fun normalizeParentContentId(parentContentId: String, videoId: String?): String
 }

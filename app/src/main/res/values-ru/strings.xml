@@ -107,7 +107,9 @@
     <string name="continue_watching">Продолжить просмотр</string>
     <string name="cw_upcoming">Скоро</string>
     <string name="cw_next_up">Далее</string>
+    <string name="cw_next_up_short">Далее</string>
     <string name="cw_new_episode">Новый эпизод</string>
+    <string name="cw_new_episode_short">Новый</string>
     <string name="cw_new_season">Новый сезон</string>
     <string name="cw_resume">Продолжить</string>
     <string name="cw_percent_watched">%1$d%% просмотрено</string>
@@ -122,6 +124,16 @@
         <item quantity="few">Выходит через %d дня</item>
         <item quantity="many">Выходит через %d дней</item>
         <item quantity="other">Выходит через %d дней</item>
+    </plurals>
+    <!-- Short versions for compact card styles (wide/poster) -->
+    <string name="cw_airs_date_short">%1$s</string>
+    <string name="cw_airs_today_short">Сегодня</string>
+    <string name="cw_airs_tomorrow_short">Завтра</string>
+    <plurals name="cw_airs_in_days_short">
+        <item quantity="one">Через %d день</item>
+        <item quantity="few">Через %d дня</item>
+        <item quantity="many">Через %d дней</item>
+        <item quantity="other">Через %d дней</item>
     </plurals>
     <string name="cw_action_go_to_details">Перейти к деталям</string>
     <string name="cw_action_start_from_beginning">Начать сначала</string>
@@ -327,7 +339,7 @@
     <string name="supporters_contributors_donate_copy">Nuvio всегда будет бесплатным и открытым. Если вы хотите поддержать проект, вы можете помочь покрыть затраты на время и инфраструктуру.</string>
     <string name="supporters_contributors_donate_button">Пожертвовать Nuvio</string>
     <string name="supporters_contributors_qr_title">Отсканируйте для пожертвования</string>
-    <string name="supporters_contributors_qr_subtitle">Откройте ссылку на телефоне и поддержите Nuvio через Ko-fi.</string>
+    <string name="supporters_contributors_qr_subtitle">Откройте ссылку на телефоне, чтобы поддержать Nuvio.</string>
     <string name="supporters_contributors_qr_hint">Наведите камеру на QR-код или используйте кнопку ниже.</string>
     <string name="supporters_contributors_back_button">Назад к деталям</string>
     <string name="supporters_tab">Спонсоры</string>
@@ -465,13 +477,6 @@
     <string name="sub_org_none_desc">Показывать субтитры в порядке выдачи аддоном по умолчанию.</string>
     <string name="sub_org_by_lang_desc">Группировать субтитры по языку.</string>
     <string name="sub_org_by_addon_desc">Группировать субтитры по источнику (аддону).</string>
-    <string name="sub_startup_mode_title">Загрузка субтитров аддона</string>
-    <string name="sub_startup_mode_fast">Быстрый запуск</string>
-    <string name="sub_startup_mode_preferred">Предпочитаемые языки</string>
-    <string name="sub_startup_mode_all">Все субтитры аддонов</string>
-    <string name="sub_startup_mode_fast_desc">Запускать воспроизведение немедленно. Выбор субтитров из аддона может однократно перезапустить плеер.</string>
-    <string name="sub_startup_mode_preferred_desc">Предварительно загружать субтитры аддона перед воспроизведением и прикреплять предпочитаемые языковые дорожки.</string>
-    <string name="sub_startup_mode_all_desc">Предварительно загружать и прикреплять все субтитры аддонов перед воспроизведением. Самый долгий запуск.</string>
 
     <!-- PlaybackAutoPlaySettings -->
     <string name="autoplay_reuse_last_link">Использовать последнюю ссылку</string>
@@ -1139,11 +1144,9 @@
 
     <!-- AuthQrSignInScreen -->
     <string name="auth_qr_title">Вход по QR</string>
-    <string name="auth_qr_account_login">Вход в аккаунт</string>
     <string name="auth_qr_finishing">Завершение входа\u2026</string>
     <string name="auth_qr_code_label">Код: %1$s</string>
     <string name="auth_qr_expires">Истекает через %1$s</string>
-    <string name="auth_qr_phone_hint">Используйте телефон для входа с email/паролем. На ТВ оставлен только вход по QR для ускорения.</string>
     <string name="auth_qr_scan_instruction">Отсканируйте QR, подтвердите в браузере, затем вернитесь сюда.</string>
     <string name="auth_qr_code_display">Код: %1$s</string>
     <string name="auth_qr_refresh">Обновить QR</string>
@@ -1738,7 +1741,6 @@
     <string name="audio_number_of_channels">Количество каналов</string>
     <string name="audio_number_of_channels_desc">Задаёт раскладку динамиков для подмешивания FFmpeg.</string>
     <string name="audio_enable_downmix_title">Включить подмешивание</string>
-    <string name="audio_enable_downmix_subtitle">Использует путь подмешивания FFmpeg. При отключении аудио следует предыдущему пути Android/устройства.</string>
     <string name="dv7_handling_title">Обработка Dolby Vision Profile 7</string>
     <string name="dv7_handling_dialog_subtitle">Выберите, как обрабатываются потоки DV Profile 7 при воспроизведении.</string>
     <string name="dv7_mode_auto">Авто (рекомендуется)</string>

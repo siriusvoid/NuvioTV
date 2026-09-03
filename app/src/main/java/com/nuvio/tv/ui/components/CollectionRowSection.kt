@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +68,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nuvio.tv.domain.model.Collection
+import com.nuvio.tv.domain.model.CardDepthSurface
 import com.nuvio.tv.domain.model.CollectionFolder
 import com.nuvio.tv.domain.model.PosterShape
 
@@ -81,12 +83,12 @@ fun CollectionRowSection(
     focusedItemIndex: Int = -1,
     onItemFocused: (itemIndex: Int) -> Unit = {},
     onFolderFocused: (collection: Collection, folder: CollectionFolder) -> Unit = { _, _ -> },
-    entryFocusRequester: FocusRequester? = null
+    entryFocusRequester: FocusRequester? = null,
+    rowFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val currentOnFolderClick by rememberUpdatedState(onFolderClick)
     val currentOnItemFocused by rememberUpdatedState(onItemFocused)
     val currentOnFolderFocused by rememberUpdatedState(onFolderFocused)
-    val rowFocusRequester = remember { FocusRequester() }
     val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     var lastRequestedFocusKey by remember { mutableStateOf<String?>(null) }
     var lastFocusedItemIndex by remember { mutableIntStateOf(-1) }
@@ -173,18 +175,22 @@ fun CollectionRowSection(
         }
 
         CompositionLocalProvider(LocalBringIntoViewSpec provides horizontalBringIntoViewSpec) {
-            val restoreIdx = lastFocusedItemIndex.coerceIn(0, (collection.folders.size - 1).coerceAtLeast(0))
-            val restoreFolder = collection.folders.getOrNull(restoreIdx)
-            val restoreFocusRequester = if (restoreFolder != null) {
-                itemFocusRequesters.getOrPut(folderFocusKey(restoreIdx, restoreFolder)) { FocusRequester() }
-            } else FocusRequester.Default
-
             LazyRow(
                 state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(rowFocusRequester)
-                    .focusRestorer(restoreFocusRequester)
+                    .focusRestorer {
+                        val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
+                        val restoreIdx = lastFocusedItemIndex.takeIf { it in visibleIndices }
+                            ?: visibleIndices.firstOrNull()
+                        restoreIdx?.let { index ->
+                            collection.folders.getOrNull(index)?.let { folder ->
+                                itemFocusRequesters[folderFocusKey(index, folder)]
+                            }
+                        }
+                            ?: FocusRequester.Default
+                    }
                     .focusGroup(),
                 contentPadding = PaddingValues(start = NuvioTheme.spacing.xxxl, end = 200.dp),
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
@@ -194,8 +200,16 @@ fun CollectionRowSection(
                     key = { index, folder -> folderFocusKey(index, folder) },
                     contentType = { _, _ -> "collection_folder" }
                 ) { index, folder ->
-                    val targetIndex = if (lastFocusedItemIndex >= 0) lastFocusedItemIndex else 0
-                    val isEntryTarget = entryFocusRequester != null && index == targetIndex
+                    val isEntryTarget by remember(entryFocusRequester, index) {
+                        derivedStateOf {
+                            val targetIndex = if (lastFocusedItemIndex >= 0) {
+                                lastFocusedItemIndex
+                            } else {
+                                0
+                            }
+                            entryFocusRequester != null && index == targetIndex
+                        }
+                    }
 
                     FolderCard(
                         folder = folder,
@@ -243,6 +257,7 @@ private fun FolderCard(
     }
 
     val shape = RoundedCornerShape(posterCardStyle.cornerRadius)
+    val cardDepthStyle = LocalCardDepthStyle.current
     val cardGlow = rememberArtworkBackedCardGlow(
         imageUrl = folder.coverImageUrl,
         fallbackSeed = "${collection.title}:${folder.title}:${folder.coverEmoji.orEmpty()}",
@@ -266,14 +281,23 @@ private fun FolderCard(
         ),
         border = CardDefaults.border(
             focusedBorder = Border(
-                border = BorderStroke(posterCardStyle.focusedBorderWidth, NuvioTheme.colors.FocusRing),
+                border = NuvioTheme.focusRing.border(posterCardStyle.focusedBorderWidth),
                 shape = shape
             )
         ),
         scale = CardDefaults.scale(focusedScale = posterCardStyle.focusedScale),
         glow = cardGlow
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .nuvioCardDepth(
+                    shape = shape,
+                    surface = CardDepthSurface.POSTERS,
+                    style = cardDepthStyle
+                )
+        ) {
             val activeImageUrl = collectionFolderCardImageUrl(folder, isFocused)
             if (!activeImageUrl.isNullOrBlank()) {
                 AsyncImage(
