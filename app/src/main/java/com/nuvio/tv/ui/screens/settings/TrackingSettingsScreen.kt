@@ -180,7 +180,8 @@ fun TrackingSettingsScreen(
         },
         onAnimeIdClick = {
             showAnimeIdDialog = true
-        }
+        },
+        onScrobblingChanged = trackingViewModel::setScrobblingEnabled
     )
 
     when (activeProvider) {
@@ -404,13 +405,15 @@ internal fun TrackingSettingsOverview(
     onContinueWatchingWindowClick: () -> Unit,
     onCommentsChanged: (Boolean) -> Unit,
     onMoreLikeThisClick: () -> Unit,
-    onAnimeIdClick: () -> Unit
+    onAnimeIdClick: () -> Unit,
+    onScrobblingChanged: (Boolean) -> Unit
 ) {
     val listState = rememberLazyListState()
     val traktPresentation = traktConnectionPresentation(traktState)
     val simklPresentation = simklConnectionPresentation(simklState)
     val traktConnected = traktState.mode == TraktConnectionMode.CONNECTED
     val traktProgressActive = trackingState.watchProgressSource == WatchProgressSource.TRAKT
+    val hasConnectedProvider = trackingState.connectedProviderIds.isNotEmpty()
 
     SettingsStandaloneScaffold(
         title = stringResource(R.string.settings_tracking_title),
@@ -489,6 +492,20 @@ internal fun TrackingSettingsOverview(
                                 modifier = Modifier
                                     .focusRequester(watchProgressFocusRequester)
                                     .testTag(TrackingSettingsTestTags.WATCH_PROGRESS_SOURCE)
+                            )
+                            SettingsToggleRow(
+                                title = stringResource(R.string.tracking_scrobbling_title),
+                                subtitle = if (hasConnectedProvider) {
+                                    stringResource(R.string.tracking_scrobbling_subtitle)
+                                } else {
+                                    stringResource(R.string.tracking_scrobbling_connect_first)
+                                },
+                                checked = trackingState.scrobblingEnabled,
+                                enabled = trackingState.isReady && hasConnectedProvider,
+                                onToggle = {
+                                    onScrobblingChanged(!trackingState.scrobblingEnabled)
+                                },
+                                modifier = Modifier.testTag(TrackingSettingsTestTags.SCROBBLING)
                             )
                         }
                     }
@@ -673,6 +690,7 @@ internal object TrackingSettingsTestTags {
     const val SIMKL_PROVIDER = "tracking_provider_simkl"
     const val LIBRARY_SOURCE = "tracking_source_library"
     const val WATCH_PROGRESS_SOURCE = "tracking_source_watch_progress"
+    const val SCROBBLING = "tracking_scrobbling"
     const val CONTINUE_WATCHING = "tracking_trakt_continue_watching"
     const val COMMENTS = "tracking_trakt_comments"
     const val MORE_LIKE_THIS = "tracking_trakt_more_like_this"
