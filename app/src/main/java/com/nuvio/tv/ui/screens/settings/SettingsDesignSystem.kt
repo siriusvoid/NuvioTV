@@ -97,6 +97,9 @@ internal val SettingsPillRadius = NuvioRadii.tokens.full
 internal val SettingsSecondaryCardRadius = NuvioComponents.tokens.settings.secondaryCardRadius
 internal val SettingsRailItemHeight = NuvioComponents.tokens.settings.railItemHeight
 
+/** Left inset of a Zen group card's heading, and so of the text that sits under it. */
+internal val SettingsZenGroupInset = 14.dp
+
 internal val SettingsZenRowShape = RoundedCornerShape(12.dp)
 internal val SettingsHorizonRowShape = RoundedCornerShape(10.dp)
 internal val SettingsHorizonGroupShape = RoundedCornerShape(16.dp)
@@ -612,7 +615,7 @@ internal fun SettingsGroupCard(
                     style = MaterialTheme.typography.labelMedium,
                     letterSpacing = 1.4.sp,
                     color = NuvioTheme.colors.TextTertiary,
-                    modifier = Modifier.padding(start = 14.dp)
+                    modifier = Modifier.padding(start = SettingsZenGroupInset)
                 )
             }
             if (!subtitle.isNullOrBlank()) {
@@ -620,7 +623,7 @@ internal fun SettingsGroupCard(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = NuvioTheme.colors.TextTertiary.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(start = 14.dp)
+                    modifier = Modifier.padding(start = SettingsZenGroupInset)
                 )
             }
             content()
@@ -689,6 +692,34 @@ internal fun SettingsGroupCard(
             content()
         }
     }
+}
+
+/**
+ * Body text inside a [SettingsGroupCard].
+ *
+ * Every other child of a group card is a row that carries its own padding, so a
+ * bare Text is the one thing that lands flush against the card's left edge while
+ * the heading above it sits indented. This puts it back on the heading's line, in
+ * whichever style is active — Zen indents only the heading, Horizon insets the
+ * content by less than the heading, and Classic pads both the same.
+ */
+@Composable
+internal fun SettingsGroupNote(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = NuvioTheme.colors.TextSecondary
+) {
+    val inset = when (NuvioTheme.settingsUiStyle) {
+        SettingsUiStyle.ZEN -> SettingsZenGroupInset
+        SettingsUiStyle.HORIZON -> NuvioTheme.spacing.lg - NuvioTheme.spacing.sm
+        SettingsUiStyle.CLASSIC -> NuvioTheme.spacing.none
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        modifier = modifier.padding(start = inset)
+    )
 }
 
 @Composable

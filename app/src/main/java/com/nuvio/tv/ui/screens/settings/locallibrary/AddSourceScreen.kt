@@ -3,25 +3,19 @@
 package com.nuvio.tv.ui.screens.settings.locallibrary
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,28 +23,24 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,18 +48,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.Card
-import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
-import com.nuvio.tv.ui.theme.NuvioColors
+import com.nuvio.tv.ui.theme.NuvioTheme
 import java.io.File
 
 @Composable
@@ -78,6 +65,8 @@ fun AddSourceScreen(
     onBackPress: () -> Unit,
     viewModel: LocalLibrarySettingsViewModel = hiltViewModel()
 ) {
+    BackHandler { onBackPress() }
+
     val addResult by viewModel.addResult.collectAsStateWithLifecycle()
 
     LaunchedEffect(addResult) {
@@ -88,7 +77,7 @@ fun AddSourceScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Add Source",
+        title = "Add source",
         subtitle = "Pick a folder on this device to scan for media."
     ) {
         LocalFileForm(viewModel, addResult)
@@ -118,11 +107,31 @@ private fun LocalFileForm(
         ContextCompat.checkSelfPermission(context, storagePermission) ==
             PackageManager.PERMISSION_GRANTED
 
+    // Coming back from the browser with a folder in hand, the only thing left to
+    // do is save, so put the cursor there instead of making the user find it.
+    val saveFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(showBrowser, pickedPath) {
+        if (!showBrowser && pickedPath != null) {
+            runCatching { saveFocusRequester.requestFocus() }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         permissionDenied = !granted
         if (granted) showBrowser = true
+    }
+
+    // Choosing a folder is the whole point of the screen and nothing here can be
+    // done without one, so go straight to the browser on arrival rather than
+    // making the user press through a form that isn't usable yet.
+    var openedBrowserOnEntry by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (openedBrowserOnEntry) return@LaunchedEffect
+        openedBrowserOnEntry = true
+        if (hasStoragePermission()) showBrowser = true
+        else permissionLauncher.launch(storagePermission)
     }
 
     if (showBrowser) {
@@ -139,14 +148,60 @@ private fun LocalFileForm(
         return
     }
 
-    SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
+    ) {
+        SettingsDetailHeader(
+            title = "New source",
+            subtitle = "Name the source and choose the folder Nuvio should index."
+        )
+
+        SettingsGroupCard(
+            modifier = Modifier.fillMaxWidth(),
+            title = "Source"
         ) {
-            TextRow(label = "Display name", value = displayName, onValueChange = { displayName = it })
+            // One column owns every gap in this card. The group card spaces its own
+            // children by 2dp, which left the path crowded against the field, and
+            // padding each child instead made the gaps add up to different sizes.
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+            ) {
+                TextRow(
+                    label = "Display name",
+                    value = displayName,
+                    onValueChange = { displayName = it }
+                )
+                Text(
+                    text = pickedPath ?: "No folder chosen yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (pickedPath == null) {
+                        NuvioTheme.colors.TextTertiary
+                    } else {
+                        NuvioTheme.colors.TextSecondary
+                    }
+                )
+                if (permissionDenied) {
+                    Text(
+                        text = "Storage permission is required to browse folders. " +
+                            "Grant it in Settings → Apps → Nuvio → Permissions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NuvioTheme.colors.Error
+                    )
+                }
+            }
+        }
+
+        // No settingsOptionRow on this row: its focusRestorer restores the
+        // last-focused button whenever focus re-enters, which overrides the
+        // request to Test & save above.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+        ) {
             Button(
                 onClick = {
                     permissionDenied = false
@@ -154,37 +209,12 @@ private fun LocalFileForm(
                     else permissionLauncher.launch(storagePermission)
                 },
                 colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.Background,
-                    contentColor = NuvioColors.TextPrimary,
-                    focusedContainerColor = NuvioColors.Background,
-                    focusedContentColor = NuvioColors.TextPrimary
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                        shape = RoundedCornerShape(50)
-                    )
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
                 )
-            ) { Text(if (pickedPath == null) "Choose folder…" else "Change folder…", color = NuvioColors.TextPrimary) }
-            if (pickedPath != null) {
-                Text(
-                    text = pickedPath!!,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NuvioColors.TextSecondary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+            ) {
+                Text(if (pickedPath == null) "Choose folder…" else "Change folder…")
             }
-            if (permissionDenied) {
-                Text(
-                    text = "Storage permission is required to browse folders. Grant it in Settings → Apps → Nuvio → Permissions.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NuvioColors.TextSecondary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = {
                     pickedPath?.let {
@@ -192,23 +222,17 @@ private fun LocalFileForm(
                     }
                 },
                 enabled = pickedPath != null,
+                modifier = Modifier.focusRequester(saveFocusRequester),
                 colors = ButtonDefaults.colors(
-                    containerColor = NuvioColors.FocusRing,
-                    contentColor = Color.Black,
-                    focusedContainerColor = NuvioColors.FocusRing,
-                    focusedContentColor = Color.Black
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(50)),
-                scale = ButtonDefaults.scale(focusedScale = 1f, pressedScale = 1f),
-                border = ButtonDefaults.border(
-                    focusedBorder = Border(
-                        border = BorderStroke(2.dp, NuvioColors.TextPrimary),
-                        shape = RoundedCornerShape(50)
-                    )
+                    containerColor = NuvioTheme.colors.BackgroundCard,
+                    contentColor = NuvioTheme.colors.TextPrimary
                 )
-            ) { Text("Test & Save", color = Color.Black) }
-            ResultBanner(addResult)
+            ) {
+                Text("Test & save")
+            }
         }
+
+        ResultBanner(addResult)
     }
 }
 
@@ -238,6 +262,7 @@ private fun TextRow(
     val surfaceFocusRequester = remember { FocusRequester() }
     val fieldFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val fieldShape = RoundedCornerShape(10.dp)
 
     LaunchedEffect(editing) {
         if (editing) {
@@ -246,40 +271,62 @@ private fun TextRow(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(text = label, style = MaterialTheme.typography.labelMedium, color = NuvioColors.TextSecondary)
-        Spacer(modifier = Modifier.height(4.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = NuvioTheme.colors.TextSecondary
+        )
         Surface(
             onClick = { editing = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(surfaceFocusRequester),
             colors = ClickableSurfaceDefaults.colors(
-                containerColor = NuvioColors.Background,
-                focusedContainerColor = NuvioColors.Background
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
             ),
             border = ClickableSurfaceDefaults.border(
                 border = Border(
-                    border = BorderStroke(1.dp, NuvioColors.Border),
-                    shape = RoundedCornerShape(8.dp)
+                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
+                    shape = fieldShape
                 ),
                 focusedBorder = Border(
-                    border = BorderStroke(2.dp, NuvioColors.FocusRing),
-                    shape = RoundedCornerShape(8.dp)
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    shape = fieldShape
                 )
             ),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            shape = ClickableSurfaceDefaults.shape(fieldShape),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
         ) {
-            Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Box(
+                modifier = Modifier.padding(
+                    horizontal = 14.dp,
+                    vertical = NuvioTheme.spacing.md
+                )
+            ) {
                 BasicTextField(
                     value = value,
                     onValueChange = onValueChange,
                     singleLine = true,
-                    visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = NuvioColors.TextPrimary),
-                    cursorBrush = SolidColor(if (editing) NuvioColors.FocusRing else Color.Transparent),
-                    keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = ImeAction.Done),
+                    visualTransformation = if (isPassword) {
+                        PasswordVisualTransformation()
+                    } else {
+                        VisualTransformation.None
+                    },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = NuvioTheme.colors.TextPrimary
+                    ),
+                    cursorBrush = SolidColor(
+                        if (editing) NuvioTheme.colors.Primary else Color.Transparent
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = keyboard,
+                        imeAction = ImeAction.Done
+                    ),
                     keyboardActions = KeyboardActions(onDone = {
                         editing = false
                         keyboardController?.hide()
@@ -299,7 +346,7 @@ private fun TextRow(
                             Text(
                                 text = "Tap to edit",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = NuvioColors.TextTertiary
+                                color = NuvioTheme.colors.TextTertiary
                             )
                         }
                         inner()
@@ -315,10 +362,8 @@ private fun ResultBanner(result: LocalLibrarySettingsViewModel.AddResult?) {
     if (result is LocalLibrarySettingsViewModel.AddResult.Failure) {
         Text(
             text = result.message,
-            color = Color(0xFFFF6B6B),
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 6.dp)
+            color = NuvioTheme.colors.Error
         )
     }
 }
-
