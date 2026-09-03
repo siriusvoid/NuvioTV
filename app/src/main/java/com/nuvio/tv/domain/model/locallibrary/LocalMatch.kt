@@ -13,6 +13,8 @@ data class LocalMatch(
     val season: Int? = null,
     val episode: Int? = null,
     val userSet: Boolean = false,
+    /** Resolved at match time, so local items line up with trackers' IMDB keys without a lookup. */
+    val imdbId: String? = null,
     /** Confidence in [0.0, 1.0]; meaningless when [userSet] is true. */
     val score: Float = 0f
 )
