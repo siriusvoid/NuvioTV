@@ -32,6 +32,12 @@ internal object AnimeReleaseParser {
     private val REPEATED_SPACE = Regex("""\s{2,}""")
     private val SEPARATOR_RUN = Regex("""[._]+""")
 
+    /** Diacritics left behind by NFD decomposition. */
+    private val COMBINING_MARKS = Regex("\\p{Mn}+")
+
+    /** A possessive apostrophe-s, which only one side of a title pair tends to carry. */
+    private val POSSESSIVE = Regex("['\u2019]s\\b")
+
     private val ROMAN_SEASONS = mapOf(
         "ii" to 2, "iii" to 3, "iv" to 4, "v" to 5, "vi" to 6
     )
@@ -313,11 +319,20 @@ internal object AnimeReleaseParser {
         return title.trim()
     }
 
-    /** Comparison form: lowercase alphanumeric words, used for scoring and cache keys. */
+    /**
+     * Comparison form: lowercase unaccented alphanumeric words, used for scoring
+     * and cache keys.
+     *
+     * Accents are folded because the databases disagree about them — Kitsu serves
+     * "Polar Bear's Café" where a release is named "Polar Bear Cafe", and an
+     * unfolded comparison scores that pair at 0.56 rather than 1. The possessive
+     * "s" left by an apostrophe goes for the same reason.
+     */
     fun normalizeForCompare(value: String): String =
-        value
-            .replace('×', 'x')
+        java.text.Normalizer.normalize(value.replace('×', 'x'), java.text.Normalizer.Form.NFD)
+            .replace(COMBINING_MARKS, "")
             .lowercase()
+            .replace(POSSESSIVE, " ")
             .map { if (it.isLetterOrDigit()) it else ' ' }
             .joinToString("")
             .split(' ')
