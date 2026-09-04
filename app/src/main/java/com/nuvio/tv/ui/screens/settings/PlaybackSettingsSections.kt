@@ -121,6 +121,7 @@ internal fun PlaybackSettingsSections(
     onShowTextColorDialog: () -> Unit,
     onShowBackgroundColorDialog: () -> Unit,
     onShowOutlineColorDialog: () -> Unit,
+    onNavigateToImportedSubtitles: () -> Unit,
     onShowStreamAutoPlayModeDialog: () -> Unit,
     onShowStreamAutoPlaySourceDialog: () -> Unit,
     onShowStreamAutoPlayAddonSelectionDialog: () -> Unit,
@@ -658,6 +659,7 @@ internal fun PlaybackSettingsSections(
                 onSetSubtitleOutlineEnabled = onSetSubtitleOutlineEnabled,
                 onSetUseLibass = onSetUseLibass,
                 onSetLibassRenderType = onSetLibassRenderType,
+                onNavigateToImportedSubtitles = onNavigateToImportedSubtitles,
                 onItemFocused = { focusedSection = PlaybackSection.SUBTITLES },
                 enabled = !generalUi.isExternalPlayer,
                 languageSelectionEnabled = !generalUi.isExternalPlayer || playerSettings.externalPlayerForwardSubtitles

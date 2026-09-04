@@ -82,6 +82,7 @@ internal fun LazyListScope.subtitleSettingsItems(
     onSetSubtitleOutlineEnabled: (Boolean) -> Unit,
     onSetUseLibass: (Boolean) -> Unit,
     onSetLibassRenderType: (LibassRenderType) -> Unit,
+    onNavigateToImportedSubtitles: () -> Unit,
     onItemFocused: () -> Unit = {},
     enabled: Boolean = true,
     languageSelectionEnabled: Boolean = enabled
@@ -153,6 +154,17 @@ internal fun LazyListScope.subtitleSettingsItems(
             subtitle = stringResource(R.string.sub_strip_sdh_desc),
             isChecked = playerSettings.subtitleStyle.stripSdh,
             onCheckedChange = onSetSubtitleStripSdh,
+            onFocused = onItemFocused,
+            enabled = enabled
+        )
+    }
+
+    item(key = "subtitle_imported") {
+        NavigationSettingsItem(
+            icon = Icons.Default.Subtitles,
+            title = stringResource(R.string.sub_imported),
+            subtitle = stringResource(R.string.sub_imported_desc),
+            onClick = onNavigateToImportedSubtitles,
             onFocused = onItemFocused,
             enabled = enabled
         )
