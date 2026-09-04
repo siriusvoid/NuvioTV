@@ -56,7 +56,10 @@ private const val FOCUS_ATTEMPTS = 8
 @Composable
 fun FolderBrowser(
     onSelect: (File) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    /** What counts as an interesting file, reported in the header as a count. */
+    fileMatcher: (String) -> Boolean = ::isVideoFileName,
+    fileNoun: String = "video file"
 ) {
     val context = LocalContext.current
     val roots = remember { storageRoots(context) }
@@ -70,8 +73,8 @@ fun FolderBrowser(
             .filter { it.isDirectory && !it.isHidden }
             .sortedBy { it.name.lowercase() }
     }
-    val videoCount: Int = remember(current) {
-        current?.listFiles()?.count { it.isFile && isVideoFileName(it.name) } ?: 0
+    val fileCount: Int = remember(current) {
+        current?.listFiles()?.count { it.isFile && fileMatcher(it.name) } ?: 0
     }
 
     // At the drive list, or at the only storage root, there's nowhere up to go.
@@ -115,7 +118,7 @@ fun FolderBrowser(
             title = current?.let { it.name.ifBlank { it.absolutePath } } ?: "Select storage",
             subtitle = when {
                 current == null -> "Choose a drive, then open folders and press \"Use this folder\""
-                videoCount > 0 -> "${current?.absolutePath} · $videoCount video file(s) here · " +
+                fileCount > 0 -> "${current?.absolutePath} · $fileCount $fileNoun(s) here · " +
                     "${subDirs.size} subfolder(s)"
                 else -> "${current?.absolutePath} · ${subDirs.size} subfolder(s)"
             }
@@ -220,7 +223,7 @@ private val VIDEO_EXTS = setOf(
     "mp4", "mkv", "avi", "mov", "ts", "m2ts", "webm", "wmv", "flv", "mpg", "mpeg", "m4v"
 )
 
-private fun isVideoFileName(name: String): Boolean {
+internal fun isVideoFileName(name: String): Boolean {
     val dot = name.lastIndexOf('.')
     if (dot < 0) return false
     return name.substring(dot + 1).lowercase() in VIDEO_EXTS

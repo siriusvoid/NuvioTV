@@ -64,6 +64,24 @@ class SubtitleFileCache @Inject constructor(
         val filename = sanitizeFilename("${input.lang}_${input.name}.$extension")
         val file = File(cacheDir, filename)
 
+        // An imported subtitle already sits in this app's own storage, which an external
+        // player cannot open — so it is copied into the cache the same way a downloaded
+        // one is, and handed over as a content:// uri.
+        val localSource = localFileFor(input.url)
+        if (localSource != null) {
+            return@withContext try {
+                val bodyBytes = localSource.readBytes()
+                val normalizedText = SubtitleCharsetDetector.decode(bodyBytes, languageHint = input.lang)
+                val sanitizedText = com.nuvio.tv.ui.screens.player.SubtitleMojibakeSanitizer.sanitize(normalizedText).toString()
+                file.writeText(sanitizedText, Charsets.UTF_8)
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to copy local subtitle file: ${input.url}", e)
+                file.delete()
+                null
+            }
+        }
+
         val request = Request.Builder()
             .url(input.url)
             .build()
@@ -103,6 +121,13 @@ class SubtitleFileCache @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "Failed to clear subtitle cache", e)
         }
+    }
+
+    /** The file a `file://` url names, when it is one this app can read. */
+    private fun localFileFor(url: String): File? {
+        if (!url.startsWith("file:", ignoreCase = true)) return null
+        val path = runCatching { Uri.parse(url).path }.getOrNull() ?: return null
+        return File(path).takeIf { it.isFile }
     }
 
     private fun guessExtension(url: String): String {

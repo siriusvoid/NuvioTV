@@ -97,7 +97,8 @@ import androidx.compose.material.icons.filled.Image
 @Composable
 fun PlaybackSettingsScreen(
     viewModel: PlaybackSettingsViewModel = hiltViewModel(),
-    onBackPress: () -> Unit = {}
+    onBackPress: () -> Unit = {},
+    onNavigateToImportedSubtitles: () -> Unit = {}
 ) {
     BackHandler { onBackPress() }
 
@@ -105,14 +106,18 @@ fun PlaybackSettingsScreen(
         title = stringResource(R.string.playback_title),
         subtitle = stringResource(R.string.playback_subtitle)
     ) {
-        PlaybackSettingsContent(viewModel = viewModel)
+        PlaybackSettingsContent(
+            viewModel = viewModel,
+            onNavigateToImportedSubtitles = onNavigateToImportedSubtitles
+        )
     }
 }
 
 @Composable
 fun PlaybackSettingsContent(
     viewModel: PlaybackSettingsViewModel = hiltViewModel(),
-    initialFocusRequester: FocusRequester? = null
+    initialFocusRequester: FocusRequester? = null,
+    onNavigateToImportedSubtitles: () -> Unit = {}
 ) {
     val playerSettings by viewModel.playerSettings.collectAsStateWithLifecycle(initialValue = PlayerSettings())
     val torrentSettings by viewModel.torrentSettingsFlow.collectAsStateWithLifecycle(
@@ -212,6 +217,7 @@ fun PlaybackSettingsContent(
                 onShowTextColorDialog = { openDialog { showTextColorDialog = true } },
                 onShowBackgroundColorDialog = { openDialog { showBackgroundColorDialog = true } },
                 onShowOutlineColorDialog = { openDialog { showOutlineColorDialog = true } },
+                onNavigateToImportedSubtitles = onNavigateToImportedSubtitles,
                 onShowStreamAutoPlayModeDialog = { openDialog { showStreamAutoPlayModeDialog = true } },
                 onShowStreamAutoPlaySourceDialog = { openDialog { showStreamAutoPlaySourceDialog = true } },
                 onShowStreamAutoPlayAddonSelectionDialog = { openDialog { showStreamAutoPlayAddonSelectionDialog = true } },

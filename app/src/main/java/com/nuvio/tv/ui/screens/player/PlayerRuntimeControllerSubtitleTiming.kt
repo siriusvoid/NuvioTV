@@ -194,7 +194,8 @@ private fun PlayerRuntimeController.maybeLoadSubtitleAutoSyncCues(force: Boolean
 }
 
 /**
- * Downloads a remote subtitle body for sidecar rendering / auto-sync.
+ * Reads a subtitle body for sidecar rendering / auto-sync — off disk for an
+ * imported file, over the network for everything else.
  *
  * Video stream headers (Authorization, Cookie, custom Host, …) are only forwarded when the
  * subtitle URL shares the same host as the active stream. Forwarding debrid/CDN headers to
@@ -202,6 +203,13 @@ private fun PlayerRuntimeController.maybeLoadSubtitleAutoSyncCues(force: Boolean
  */
 internal suspend fun PlayerRuntimeController.downloadSubtitleBody(url: String, languageHint: String? = null): String =
     withContext(Dispatchers.IO) {
+        // An imported subtitle is already on this device, so there is nothing to fetch —
+        // and OkHttp would reject the path outright.
+        importedSubtitles.readSubtitleText(url)?.let { text ->
+            if (text.isNotBlank()) return@withContext text
+            error(context.getString(com.nuvio.tv.R.string.subtitle_download_empty_content))
+        }
+
         var lastError: Exception? = null
         repeat(SUBTITLE_DOWNLOAD_MAX_ATTEMPTS) { attempt ->
             try {

@@ -37,6 +37,9 @@ import com.nuvio.tv.ui.screens.settings.webdav.WebDavReviewScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSettingsScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSourceDetailScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.LocalLibrarySettingsScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.ImportedSubtitlePackScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.ImportedSubtitlesSettingsScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleImportScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchListScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchPickerScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.SourceDetailScreen
@@ -321,6 +324,9 @@ fun NuvioNavHost(
                 },
                 onNavigateToCastDetail = { personId, personName, preferCrew ->
                     navController.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
+                },
+                onNavigateToSubtitleImport = { itemType, itemId ->
+                    navController.navigate(Screen.SubtitleImport.createRoute(itemType, itemId))
                 },
                 onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
                     navController.navigate(
@@ -1177,7 +1183,10 @@ fun NuvioNavHost(
                     navController.navigate(Screen.LicensesAttributions.route)
                 },
                 onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrarySettings.route) },
-                onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) }
+                onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) },
+                onNavigateToImportedSubtitles = {
+                    navController.navigate(Screen.ImportedSubtitles.route)
+                }
             )
         }
 
@@ -1209,7 +1218,10 @@ fun NuvioNavHost(
 
         composable(Screen.PlaybackSettings.route) {
             PlaybackSettingsScreen(
-                onBackPress = { navController.popBackStack() }
+                onBackPress = { navController.popBackStack() },
+                onNavigateToImportedSubtitles = {
+                    navController.navigate(Screen.ImportedSubtitles.route)
+                }
             )
         }
 
@@ -1361,6 +1373,36 @@ fun NuvioNavHost(
                 itemKey = itemKey,
                 onBackPress = { navController.popBackStack() }
             )
+        }
+
+        composable(Screen.ImportedSubtitles.route) {
+            ImportedSubtitlesSettingsScreen(
+                onBackPress = { navController.popBackStack() },
+                onNavigateToPack = { packId ->
+                    navController.navigate(Screen.ImportedSubtitlePack.createRoute(packId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.ImportedSubtitlePack.route,
+            arguments = listOf(navArgument("packId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val packId = backStackEntry.arguments?.getString("packId").orEmpty()
+            ImportedSubtitlePackScreen(
+                packId = packId,
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.SubtitleImport.route,
+            arguments = listOf(
+                navArgument("itemType") { type = NavType.StringType },
+                navArgument("itemId") { type = NavType.StringType }
+            )
+        ) {
+            SubtitleImportScreen(onBackPress = { navController.popBackStack() })
         }
 
         composable(Screen.WebDavSettings.route) {
