@@ -71,7 +71,6 @@ import com.nuvio.tv.ui.components.SynopsisDescription
 import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.ui.platform.LocalContext
@@ -100,8 +99,6 @@ fun HeroContentSection(
     onToggleMovieWatched: () -> Unit,
     trailerAvailable: Boolean = false,
     onTrailerClick: () -> Unit = {},
-    hasImportedSubtitles: Boolean = false,
-    onImportSubtitlesClick: () -> Unit = {},
     hideLogoDuringTrailer: Boolean = false,
     mdbListRatings: MDBListRatings? = null,
     hideMetaInfoImdb: Boolean = false,
@@ -281,17 +278,6 @@ fun HeroContentSection(
                             )
                         }
 
-                        // Filled in once this title has a pack, so the row says at a
-                        // glance whether subtitles were already brought in for it.
-                        ActionIconButton(
-                            icon = Icons.Default.Subtitles,
-                            contentDescription = stringResource(R.string.hero_import_subtitles),
-                            onClick = onImportSubtitlesClick,
-                            selected = hasImportedSubtitles,
-                            selectedContainerColor = Color.White,
-                            selectedContentColor = Color.Black,
-                            onFocused = onHeroActionFocused
-                        )
                     }
 
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
