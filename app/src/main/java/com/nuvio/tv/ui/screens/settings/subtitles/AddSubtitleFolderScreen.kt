@@ -38,27 +38,30 @@ import com.nuvio.tv.domain.model.subtitles.isSubtitleFileName
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
+import com.nuvio.tv.ui.screens.settings.SettingsTextRow
 import com.nuvio.tv.ui.screens.settings.locallibrary.FolderBrowser
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 /**
- * Imports a folder of subtitle files for one show.
+ * Adds one subtitle folder.
  *
- * Reached from the show's details page, so the title is already settled and the
- * only thing left to choose is the folder. Android TV ships no document picker,
- * so the same in-app browser the local library uses stands in for one.
+ * Android TV ships no document picker, so the in-app browser the local library
+ * uses stands in for one — and reading a subtitle file, which is not a media
+ * file, needs all-files access before that browser is any use.
  */
 @Composable
-fun SubtitleImportScreen(
+fun AddSubtitleFolderScreen(
+    onDone: () -> Unit,
     onBackPress: () -> Unit,
-    viewModel: SubtitleImportViewModel = hiltViewModel()
+    viewModel: SubtitleFoldersViewModel = hiltViewModel()
 ) {
     BackHandler { onBackPress() }
 
     val context = LocalContext.current
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val existingPacks by viewModel.existingPacks.collectAsStateWithLifecycle()
+    val addError by viewModel.addError.collectAsStateWithLifecycle()
 
+    var displayName by remember { mutableStateOf("") }
+    var pickedPath by remember { mutableStateOf<String?>(null) }
     var showBrowser by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
     var needsAllFilesAccess by remember { mutableStateOf(false) }
@@ -103,7 +106,7 @@ fun SubtitleImportScreen(
 
     fun browse() {
         permissionDenied = false
-        viewModel.clearResult()
+        viewModel.clearAddError()
         when {
             !AllFilesAccess.isRequired ->
                 if (hasStoragePermission()) showBrowser = true else permissionLauncher.launch(storagePermission)
@@ -118,32 +121,33 @@ fun SubtitleImportScreen(
     }
 
     // Choosing a folder is the whole point of the screen, so go straight to the
-    // browser once the title is known rather than through a page with one button.
+    // browser rather than through a form that isn't usable yet.
     var openedBrowserOnEntry by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(state.isLoading, state.error) {
-        if (openedBrowserOnEntry || state.isLoading || state.error != null) return@LaunchedEffect
+    LaunchedEffect(Unit) {
+        if (openedBrowserOnEntry) return@LaunchedEffect
         openedBrowserOnEntry = true
         browse()
     }
 
-    // Back from the browser, the next thing to do is read what came of it, so the
-    // cursor lands on the button that starts the next import.
-    val browseFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(showBrowser, state.result) {
-        if (!showBrowser && state.result != null) {
-            runCatching { browseFocusRequester.requestFocus() }
+    // Coming back from the browser with a folder in hand, the only thing left to
+    // do is save, so put the cursor there instead of making the user find it.
+    val saveFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(showBrowser, pickedPath) {
+        if (!showBrowser && pickedPath != null) {
+            runCatching { saveFocusRequester.requestFocus() }
         }
     }
 
     SettingsStandaloneScaffold(
-        title = "Import subtitles",
-        subtitle = state.showName.ifBlank { "Subtitle files stored on this device" }
+        title = "Add subtitle folder",
+        subtitle = "Pick a folder on this device to scan for subtitle files."
     ) {
         if (showBrowser) {
             FolderBrowser(
                 onSelect = { folder ->
+                    pickedPath = folder.absolutePath
+                    if (displayName.isBlank()) displayName = folder.name.ifBlank { folder.absolutePath }
                     showBrowser = false
-                    viewModel.import(folder)
                 },
                 onCancel = { showBrowser = false },
                 fileMatcher = { it.isSubtitleFileName() },
@@ -159,26 +163,31 @@ fun SubtitleImportScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
         ) {
             SettingsDetailHeader(
-                title = state.showName.ifBlank { "Import subtitles" },
-                subtitle = "Pick the folder holding this show's subtitle files. They are copied " +
-                    "into Nuvio and matched to episodes by their file names."
+                title = "New folder",
+                subtitle = "Point Nuvio at the folder holding your subtitle packs. Everything " +
+                    "below it is scanned, so a parent folder of many releases is fine."
             )
 
-            SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "Status") {
+            SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "Folder") {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
                 ) {
+                    SettingsTextRow(
+                        label = "Display name",
+                        value = displayName,
+                        onValueChange = { displayName = it }
+                    )
                     Text(
-                        text = statusText(state, existingPacks.size, existingPacks.sumOf { it.files.size }),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = when (state.result) {
-                            is SubtitleImportResult.Imported -> NuvioTheme.colors.TextPrimary
-                            null -> NuvioTheme.colors.TextSecondary
-                            else -> NuvioTheme.colors.Error
+                        text = pickedPath ?: "No folder chosen yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (pickedPath == null) {
+                            NuvioTheme.colors.TextTertiary
+                        } else {
+                            NuvioTheme.colors.TextSecondary
                         }
                     )
-                    state.error?.let { error ->
+                    addError?.let { error ->
                         Text(
                             text = error,
                             style = MaterialTheme.typography.bodySmall,
@@ -219,81 +228,27 @@ fun SubtitleImportScreen(
             ) {
                 Button(
                     onClick = { browse() },
-                    enabled = !state.isLoading && state.error == null && !state.isImporting,
-                    modifier = Modifier.focusRequester(browseFocusRequester),
                     colors = ButtonDefaults.colors(
                         containerColor = NuvioTheme.colors.BackgroundCard,
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text(if (state.result == null) "Choose folder…" else "Import another folder…")
-                }
-                if (needsAllFilesAccess && !grantScreenMissing) {
-                    Button(
-                        onClick = { requestAllFilesAccess() },
-                        colors = ButtonDefaults.colors(
-                            containerColor = NuvioTheme.colors.BackgroundCard,
-                            contentColor = NuvioTheme.colors.TextPrimary
-                        )
-                    ) {
-                        Text("Grant access…")
-                    }
+                    Text(if (pickedPath == null) "Choose folder…" else "Change folder…")
                 }
                 Button(
-                    onClick = onBackPress,
+                    onClick = {
+                        pickedPath?.let { path -> viewModel.addSource(path, displayName, onDone) }
+                    },
+                    enabled = pickedPath != null,
+                    modifier = Modifier.focusRequester(saveFocusRequester),
                     colors = ButtonDefaults.colors(
                         containerColor = NuvioTheme.colors.BackgroundCard,
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text("Done")
+                    Text("Add and scan")
                 }
             }
-
-            if (existingPacks.isNotEmpty()) {
-                SettingsGroupCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    title = "Already imported",
-                    subtitle = "Manage these under Settings → Playback → Imported subtitles."
-                ) {
-                    existingPacks.forEach { pack ->
-                        Text(
-                            text = listOfNotNull(
-                                pack.sourceName?.takeIf { it.isNotBlank() },
-                                "${pack.files.size} files, ${pack.matchedCount} matched"
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NuvioTheme.colors.TextSecondary
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun statusText(
-    state: SubtitleImportUiState,
-    packCount: Int,
-    fileCount: Int
-): String = when {
-    state.isLoading -> "Loading this title…"
-    state.isImporting -> "Importing…"
-    else -> when (val result = state.result) {
-        is SubtitleImportResult.Imported ->
-            "Imported ${result.fileCount} file(s) from \"${result.folderName}\" — " +
-                "${result.matchedCount} matched to an episode."
-
-        SubtitleImportResult.NoSubtitleFiles ->
-            "That folder holds no subtitle files Nuvio can read."
-
-        SubtitleImportResult.Failed ->
-            "The import failed. Check the folder is still readable and try again."
-
-        null -> if (packCount > 0) {
-            "$fileCount file(s) already imported for this title."
-        } else {
-            "Nothing imported for this title yet."
         }
     }
 }

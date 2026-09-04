@@ -1,34 +1,40 @@
 package com.nuvio.tv.domain.repository
 
-import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitleMatch
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitlePack
+import com.nuvio.tv.domain.model.subtitles.SubtitleFolderSource
+import com.nuvio.tv.domain.model.subtitles.SubtitleScanProgress
+import com.nuvio.tv.domain.model.subtitles.UnmatchedSubtitleFolder
 import kotlinx.coroutines.flow.StateFlow
-import java.io.File
 
 /**
- * The library of subtitle files the user imported from storage on this device.
+ * The library of subtitle folders the user pointed Nuvio at.
  *
- * Imported files are offered to the player alongside the addons' own subtitles,
- * so nothing downstream has to know where a subtitle came from — only that its
- * url names a local file, which [readSubtitleText] answers for.
+ * Scanned and matched the way the WebDAV and local libraries are, and offered to
+ * the player alongside the addons' own subtitles. Files are read where they lie:
+ * nothing here ever copies, moves or deletes one.
  */
 interface ImportedSubtitleGateway {
 
+    val sources: StateFlow<List<SubtitleFolderSource>>
+
     val packs: StateFlow<List<ImportedSubtitlePack>>
 
-    fun packsFor(metaId: String): List<ImportedSubtitlePack>
+    /** Releases the scanner found but could not place, so they are not lost silently. */
+    val unmatched: StateFlow<List<UnmatchedSubtitleFolder>>
 
-    /**
-     * Copies every subtitle file in [folder] in and places them on [meta]'s
-     * episodes. Returns how many files were taken; zero means the folder held no
-     * subtitle file this app can use.
-     */
-    suspend fun import(meta: Meta, folder: File): Int
+    val progress: StateFlow<Map<String, SubtitleScanProgress>>
 
-    suspend fun setKeepAfterWatching(packId: String, keep: Boolean)
+    suspend fun addSource(path: String, displayName: String): Result<SubtitleFolderSource>
 
-    suspend fun deletePack(packId: String)
+    suspend fun removeSource(sourceId: String)
+
+    suspend fun setEnabled(sourceId: String, enabled: Boolean)
+
+    /** Rescans in the background; progress arrives through [progress]. */
+    fun rescan(sourceId: String)
+
+    fun rescanAll()
 
     /** Imported subtitles that answer for one episode. */
     suspend fun subtitlesFor(
@@ -39,8 +45,8 @@ interface ImportedSubtitleGateway {
     ): List<ImportedSubtitleMatch>
 
     /** The url a stored subtitle is served to the player under. */
-    fun subtitleUrl(relativePath: String): String
+    fun subtitleUrl(path: String): String
 
-    /** Decoded text of a stored subtitle, or null when [url] is not one of ours. */
+    /** Decoded text of an indexed subtitle, or null when [url] is not one of ours. */
     fun readSubtitleText(url: String): String?
 }
