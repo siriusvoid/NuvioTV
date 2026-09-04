@@ -491,6 +491,25 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
         ExternalMetaOutcome.Failed
     }
 
+/** Requests the combination the detail screen asks for, so it opens on a cache hit. */
+private fun HomeViewModel.warmFullTmdbEnrichment(item: MetaPreview) {
+    val tmdbEnabledForCurrentLayout = currentTmdbSettings.enabled &&
+        (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
+    if (!tmdbEnabledForCurrentLayout) return
+    viewModelScope.launch {
+        runCatching {
+            val tmdbId = tmdbService.ensureTmdbId(item.id, item.apiType) ?: return@runCatching
+            tmdbMetadataService.fetchEnrichment(
+                tmdbId = tmdbId,
+                contentType = item.type,
+                language = currentTmdbSettings.language,
+                includeCredits = currentTmdbSettings.useCredits,
+                includeTrailers = currentTmdbSettings.useTrailers
+            )
+        }
+    }
+}
+
 internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
     if (startupGracePeriodActive) {
         deferredEnrichItem = item
@@ -515,6 +534,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             // Still prefetch full meta in background for instant detail screen.
             if (item.id !in backgroundMetaPrefetchedIds) {
                 backgroundMetaPrefetchedIds.add(item.id)
+                warmFullTmdbEnrichment(item)
                 viewModelScope.launch {
                     metaRepository.getMetaFromAllAddons(
                         type = item.apiType,
@@ -551,6 +571,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 // Still prefetch full meta in background for instant detail screen.
                 if (item.id !in backgroundMetaPrefetchedIds) {
                     backgroundMetaPrefetchedIds.add(item.id)
+                    warmFullTmdbEnrichment(item)
                     launch {
                         metaRepository.getMetaFromAllAddons(
                             type = item.apiType,
@@ -574,7 +595,10 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                         tmdbMetadataService.fetchEnrichment(
                             tmdbId = tmdbId,
                             contentType = item.type,
-                            language = currentTmdbSettings.language
+                            language = currentTmdbSettings.language,
+                            // The hero shows neither.
+                            includeCredits = false,
+                            includeTrailers = false
                         )
                     }.getOrNull()
                 } else null
@@ -630,6 +654,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                         id = item.id
                     ).first { it !is NetworkResult.Loading }
                 }
+                warmFullTmdbEnrichment(item)
             }
 
             // Warm up watch progress pipeline so detail screen reads are fast.
@@ -681,7 +706,10 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
                         tmdbMetadataService.fetchEnrichment(
                             tmdbId = tmdbId,
                             contentType = item.type,
-                            language = currentTmdbSettings.language
+                            language = currentTmdbSettings.language,
+                            // The hero shows neither.
+                            includeCredits = false,
+                            includeTrailers = false
                         )
                     }.getOrNull()
                 } else null
@@ -967,7 +995,10 @@ internal suspend fun HomeViewModel.enrichHeroItemsPipeline(
                             tmdbMetadataService.fetchEnrichment(
                                 tmdbId = tmdbId,
                                 contentType = item.type,
-                                language = settings.language
+                                language = settings.language,
+                                // The hero shows neither.
+                                includeCredits = false,
+                                includeTrailers = false
                             )
                         }
                         val mdbDeferred = if (mdbEnabled) async {
