@@ -37,9 +37,9 @@ import com.nuvio.tv.ui.screens.settings.webdav.WebDavReviewScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSettingsScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSourceDetailScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.LocalLibrarySettingsScreen
-import com.nuvio.tv.ui.screens.settings.subtitles.ImportedSubtitlePackScreen
-import com.nuvio.tv.ui.screens.settings.subtitles.ImportedSubtitlesSettingsScreen
-import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleImportScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.AddSubtitleFolderScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleFolderDetailScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleFoldersScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchListScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchPickerScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.SourceDetailScreen
@@ -324,9 +324,6 @@ fun NuvioNavHost(
                 },
                 onNavigateToCastDetail = { personId, personName, preferCrew ->
                     navController.navigate(Screen.CastDetail.createRoute(personId, personName, preferCrew))
-                },
-                onNavigateToSubtitleImport = { itemType, itemId ->
-                    navController.navigate(Screen.SubtitleImport.createRoute(itemType, itemId))
                 },
                 onNavigateToTmdbEntityBrowse = { entityKind, entityId, entityName, sourceType ->
                     navController.navigate(
@@ -1185,7 +1182,7 @@ fun NuvioNavHost(
                 onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrarySettings.route) },
                 onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) },
                 onNavigateToImportedSubtitles = {
-                    navController.navigate(Screen.ImportedSubtitles.route)
+                    navController.navigate(Screen.SubtitleFolders.route)
                 }
             )
         }
@@ -1220,7 +1217,7 @@ fun NuvioNavHost(
             PlaybackSettingsScreen(
                 onBackPress = { navController.popBackStack() },
                 onNavigateToImportedSubtitles = {
-                    navController.navigate(Screen.ImportedSubtitles.route)
+                    navController.navigate(Screen.SubtitleFolders.route)
                 }
             )
         }
@@ -1375,34 +1372,32 @@ fun NuvioNavHost(
             )
         }
 
-        composable(Screen.ImportedSubtitles.route) {
-            ImportedSubtitlesSettingsScreen(
+        composable(Screen.SubtitleFolders.route) {
+            SubtitleFoldersScreen(
                 onBackPress = { navController.popBackStack() },
-                onNavigateToPack = { packId ->
-                    navController.navigate(Screen.ImportedSubtitlePack.createRoute(packId))
+                onNavigateToAddFolder = { navController.navigate(Screen.SubtitleFolderAdd.route) },
+                onNavigateToFolder = { sourceId ->
+                    navController.navigate(Screen.SubtitleFolderDetail.createRoute(sourceId))
                 }
             )
         }
 
-        composable(
-            route = Screen.ImportedSubtitlePack.route,
-            arguments = listOf(navArgument("packId") { type = NavType.StringType })
-        ) { backStackEntry ->
-            val packId = backStackEntry.arguments?.getString("packId").orEmpty()
-            ImportedSubtitlePackScreen(
-                packId = packId,
+        composable(Screen.SubtitleFolderAdd.route) {
+            AddSubtitleFolderScreen(
+                onDone = { navController.popBackStack() },
                 onBackPress = { navController.popBackStack() }
             )
         }
 
         composable(
-            route = Screen.SubtitleImport.route,
-            arguments = listOf(
-                navArgument("itemType") { type = NavType.StringType },
-                navArgument("itemId") { type = NavType.StringType }
+            route = Screen.SubtitleFolderDetail.route,
+            arguments = listOf(navArgument("sourceId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty()
+            SubtitleFolderDetailScreen(
+                sourceId = sourceId,
+                onBackPress = { navController.popBackStack() }
             )
-        ) {
-            SubtitleImportScreen(onBackPress = { navController.popBackStack() })
         }
 
         composable(Screen.WebDavSettings.route) {

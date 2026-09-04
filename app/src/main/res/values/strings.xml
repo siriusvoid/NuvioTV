@@ -183,7 +183,6 @@
     <string name="hero_mark_watched">Mark as watched</string>
     <string name="hero_mark_unwatched">Mark as unwatched</string>
     <string name="hero_play_trailer">Play trailer</string>
-    <string name="hero_import_subtitles">Import subtitles</string>
     <string name="hero_press_back_trailer">Press back to exit trailer</string>
     <string name="hero_synopsis_read_more">Read more</string>
     <string name="hero_synopsis_dismiss_hint">Press back to close</string>
@@ -841,8 +840,8 @@
     <string name="sub_show_only_preferred_languages_desc">Hide all other subtitles languages from selection list</string>
     <string name="sub_strip_sdh">Strip SDH subtitles</string>
     <string name="sub_strip_sdh_desc">Hide sound descriptions and speaker labels from text subtitles</string>
-    <string name="sub_imported">Imported subtitles</string>
-    <string name="sub_imported_desc">Subtitle files you added from this device</string>
+    <string name="sub_imported">Subtitle folders</string>
+    <string name="sub_imported_desc">Folders of subtitle files stored on this device</string>
     <string name="sub_organization">Subtitle Organization</string>
     <string name="sub_size">Size</string>
     <string name="sub_vertical_offset">Vertical Offset</string>

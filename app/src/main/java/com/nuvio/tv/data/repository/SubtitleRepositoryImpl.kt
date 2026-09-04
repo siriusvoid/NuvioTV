@@ -21,6 +21,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
@@ -157,10 +158,11 @@ class SubtitleRepositoryImpl @Inject constructor(
         return matches.map { match ->
             Subtitle(
                 id = "${match.pack.id}:${match.file.fileName}",
-                url = importedSubtitles.subtitleUrl(match.file.relativePath),
+                url = importedSubtitles.subtitleUrl(match.file.path),
                 lang = match.pack.language,
-                // The folder tells two groups' translations of the same episode apart.
-                addonName = match.pack.sourceName?.takeIf { it.isNotBlank() } ?: IMPORTED_ADDON_NAME,
+                // The folder tells one fansub group's translation from another.
+                addonName = File(match.pack.folderPath).name.takeIf { it.isNotBlank() }
+                    ?: IMPORTED_ADDON_NAME,
                 addonLogo = null
             )
         }

@@ -5,15 +5,27 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitlePack
+import com.nuvio.tv.domain.model.subtitles.SubtitleFolderSource
+import com.nuvio.tv.domain.model.subtitles.UnmatchedSubtitleFolder
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Profile-scoped index of imported subtitle packs; the files are in [com.nuvio.tv.data.subtitles.ImportedSubtitleStorage]. */
+/** Everything one profile knows about its subtitle folders. */
+@Serializable
+data class ImportedSubtitleIndex(
+    val sources: List<SubtitleFolderSource> = emptyList(),
+    val packs: List<ImportedSubtitlePack> = emptyList(),
+    val unmatched: List<UnmatchedSubtitleFolder> = emptyList()
+)
+
+/** Profile-scoped index of subtitle folders; the files stay where they are, so a rescan rebuilds it. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class ImportedSubtitlePreferences @Inject constructor(
@@ -21,25 +33,27 @@ class ImportedSubtitlePreferences @Inject constructor(
     private val profileManager: ProfileManager
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    private val packsKey = stringPreferencesKey("packs_json")
+    private val indexKey = stringPreferencesKey("index_json")
 
-    val packs: Flow<List<ImportedSubtitlePack>> =
+    val index: Flow<ImportedSubtitleIndex> =
         profileManager.activeProfileId.flatMapLatest { profileId ->
-            factory.get(profileId, FEATURE).data.map { prefs -> parse(prefs[packsKey]) }
+            factory.get(profileId, FEATURE).data.map { prefs -> parse(prefs[indexKey]) }
         }
 
-    suspend fun save(packs: List<ImportedSubtitlePack>) {
+    suspend fun current(): ImportedSubtitleIndex = index.first()
+
+    suspend fun save(index: ImportedSubtitleIndex) {
         factory.get(profileManager.activeProfileId.value, FEATURE).edit { prefs ->
-            prefs[packsKey] = json.encodeToString(packs)
+            prefs[indexKey] = json.encodeToString(index)
         }
     }
 
-    private fun parse(payload: String?): List<ImportedSubtitlePack> {
-        if (payload.isNullOrBlank()) return emptyList()
-        return runCatching { json.decodeFromString<List<ImportedSubtitlePack>>(payload) }
+    private fun parse(payload: String?): ImportedSubtitleIndex {
+        if (payload.isNullOrBlank()) return ImportedSubtitleIndex()
+        return runCatching { json.decodeFromString<ImportedSubtitleIndex>(payload) }
             .getOrElse { error ->
-                Log.w(TAG, "Could not read the imported subtitle index", error)
-                emptyList()
+                Log.w(TAG, "Could not read the subtitle folder index", error)
+                ImportedSubtitleIndex()
             }
     }
 

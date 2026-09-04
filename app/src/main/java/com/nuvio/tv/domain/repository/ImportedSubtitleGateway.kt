@@ -1,24 +1,34 @@
 package com.nuvio.tv.domain.repository
 
-import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitleMatch
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitlePack
+import com.nuvio.tv.domain.model.subtitles.SubtitleFolderSource
+import com.nuvio.tv.domain.model.subtitles.SubtitleScanProgress
+import com.nuvio.tv.domain.model.subtitles.UnmatchedSubtitleFolder
 import kotlinx.coroutines.flow.StateFlow
-import java.io.File
 
-/** Imported subtitle files, offered to the player next to the addons' subtitles under a local url. */
+/** Subtitle folders the user picked, scanned like the other libraries; files are only read in place. */
 interface ImportedSubtitleGateway {
+
+    val sources: StateFlow<List<SubtitleFolderSource>>
 
     val packs: StateFlow<List<ImportedSubtitlePack>>
 
-    fun packsFor(metaId: String): List<ImportedSubtitlePack>
+    /** Releases the scanner found but could not place, so they are not lost silently. */
+    val unmatched: StateFlow<List<UnmatchedSubtitleFolder>>
 
-    /** Imports [folder]'s subtitle files onto [meta]'s episodes; returns how many it took. */
-    suspend fun import(meta: Meta, folder: File): Int
+    val progress: StateFlow<Map<String, SubtitleScanProgress>>
 
-    suspend fun setKeepAfterWatching(packId: String, keep: Boolean)
+    suspend fun addSource(path: String, displayName: String): Result<SubtitleFolderSource>
 
-    suspend fun deletePack(packId: String)
+    suspend fun removeSource(sourceId: String)
+
+    suspend fun setEnabled(sourceId: String, enabled: Boolean)
+
+    /** Rescans in the background; progress arrives through [progress]. */
+    fun rescan(sourceId: String)
+
+    fun rescanAll()
 
     /** Imported subtitles that answer for one episode. */
     suspend fun subtitlesFor(
@@ -29,8 +39,8 @@ interface ImportedSubtitleGateway {
     ): List<ImportedSubtitleMatch>
 
     /** The url a stored subtitle is served to the player under. */
-    fun subtitleUrl(relativePath: String): String
+    fun subtitleUrl(path: String): String
 
-    /** Decoded text of a stored subtitle, or null when [url] is not one of ours. */
+    /** Decoded text of an indexed subtitle, or null when [url] is not one of ours. */
     fun readSubtitleText(url: String): String?
 }
