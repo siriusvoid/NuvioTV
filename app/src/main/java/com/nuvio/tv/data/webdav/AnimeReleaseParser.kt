@@ -21,6 +21,12 @@ internal object AnimeReleaseParser {
     private val REPEATED_SPACE = Regex("""\s{2,}""")
     private val SEPARATOR_RUN = Regex("""[._]+""")
 
+    /** Diacritics left behind by NFD decomposition. */
+    private val COMBINING_MARKS = Regex("\\p{Mn}+")
+
+    /** A possessive apostrophe-s, which only one side of a title pair tends to carry. */
+    private val POSSESSIVE = Regex("['\u2019]s\\b")
+
     private val ROMAN_SEASONS = mapOf(
         "ii" to 2, "iii" to 3, "iv" to 4, "v" to 5, "vi" to 6
     )
@@ -299,11 +305,12 @@ internal object AnimeReleaseParser {
         return title.trim()
     }
 
-    /** Comparison form: lowercase alphanumeric words, used for scoring and cache keys. */
+    /** Lowercase unaccented words for scoring and cache keys; databases disagree on accents and possessives. */
     fun normalizeForCompare(value: String): String =
-        value
-            .replace('×', 'x')
+        java.text.Normalizer.normalize(value.replace('×', 'x'), java.text.Normalizer.Form.NFD)
+            .replace(COMBINING_MARKS, "")
             .lowercase()
+            .replace(POSSESSIVE, " ")
             .map { if (it.isLetterOrDigit()) it else ' ' }
             .joinToString("")
             .split(' ')
