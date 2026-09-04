@@ -246,6 +246,7 @@ fun MetaDetailsScreen(
     onNavigateToCastDetail: (personId: Int, personName: String, preferCrew: Boolean) -> Unit = { _, _, _ -> },
     onNavigateToTmdbEntityBrowse: (entityKind: String, entityId: Int, entityName: String, sourceType: String) -> Unit = { _, _, _, _ -> },
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit = { _, _, _ -> },
+    onNavigateToSubtitleImport: (itemType: String, itemId: String) -> Unit = { _, _ -> },
     onPlayClick: (
         videoId: String,
         contentType: String,
@@ -296,6 +297,7 @@ fun MetaDetailsScreen(
     ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val hasImportedSubtitles by viewModel.hasImportedSubtitles.collectAsStateWithLifecycle()
     val posterCardCornerRadiusDp by viewModel.posterCardCornerRadiusDp.collectAsStateWithLifecycle()
     val effectiveAutoplayEnabled by viewModel.effectiveAutoplayEnabled.collectAsStateWithLifecycle(
         initialValue = false
@@ -764,6 +766,8 @@ fun MetaDetailsScreen(
                     showTrailerControls = uiState.showTrailerControls,
                     hideLogoDuringTrailer = uiState.hideLogoDuringTrailer,
                     trailerButtonEnabled = uiState.trailerButtonEnabled,
+                    hasImportedSubtitles = hasImportedSubtitles,
+                    onImportSubtitlesClick = { onNavigateToSubtitleImport(meta.apiType, meta.id) },
                     isSharedTrailerOverlayVisible = uiState.isSharedTrailerOverlayVisible,
                     isSharedTrailerLoading = uiState.isSharedTrailerLoading,
                     sharedTrailerUrl = uiState.sharedTrailerUrl,
@@ -1033,6 +1037,8 @@ private fun MetaDetailsContent(
     showTrailerControls: Boolean,
     hideLogoDuringTrailer: Boolean,
     trailerButtonEnabled: Boolean,
+    hasImportedSubtitles: Boolean,
+    onImportSubtitlesClick: () -> Unit,
     isSharedTrailerOverlayVisible: Boolean,
     isSharedTrailerLoading: Boolean,
     sharedTrailerUrl: String?,
@@ -1814,6 +1820,8 @@ private fun MetaDetailsContent(
                         hideExtraMetadata = hideExtraMetadata,
                         trailerAvailable = trailerButtonEnabled && !trailerUrl.isNullOrBlank(),
                         onTrailerClick = onTrailerButtonClick,
+                        hasImportedSubtitles = hasImportedSubtitles,
+                        onImportSubtitlesClick = onImportSubtitlesClick,
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
                         playButtonFocusRequester = heroPlayFocusRequester,
