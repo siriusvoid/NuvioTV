@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.core.tmdb.TmdbEpisodeEnrichment
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
@@ -1028,7 +1029,8 @@ class MetaDetailsViewModel @Inject constructor(
         val precomputedNextToWatch = computeNextToWatch(enriched, progressMap, watchedEpisodes)
         updateNextToWatch(precomputedNextToWatch)
 
-        // Episode ratings and MDBList are independent — launch both without waiting.
+        // Episode ratings, episode enrichment and MDBList are independent — launch without waiting.
+        loadEpisodeEnrichmentAsync(enriched)
         loadEpisodeRatingsAsync(enriched)
         viewModelScope.launch { loadMDBListRatings(enriched) }
     }
@@ -1500,6 +1502,68 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
+    /** One request per season, so it merges after the paint without resetting the season selection. */
+    private fun loadEpisodeEnrichmentAsync(meta: Meta) {
+        viewModelScope.launch {
+            val settings = tmdbSettingsDataStore.settings.first()
+            if (!settings.enabled) return@launch
+            val isSeries = meta.apiType in listOf("series", "tv")
+            if (!((settings.useEpisodes || settings.useReleaseDates) && isSeries)) return@launch
+
+            val seasonNumbers = meta.videos.mapNotNull { it.season }.distinct()
+            if (seasonNumbers.isEmpty()) return@launch
+
+            val tmdbContentType = resolveTmdbContentType(meta)
+            val tmdbId = tmdbService.ensureTmdbId(meta.id, tmdbContentType.toApiString())
+                ?: tmdbService.ensureTmdbId(itemId, itemType)
+                ?: return@launch
+
+            val episodeMap = runCatching {
+                tmdbMetadataService.fetchEpisodeEnrichment(
+                    tmdbId = tmdbId,
+                    seasonNumbers = seasonNumbers,
+                    language = settings.language
+                )
+            }.getOrNull().orEmpty()
+            if (episodeMap.isEmpty()) return@launch
+
+            _uiState.update { state ->
+                val current = state.meta ?: return@update state
+                val mergedVideos = current.videos.map { video ->
+                    mergeEpisodeEnrichment(video, episodeMap, settings)
+                }
+                state.copy(
+                    meta = current.copy(videos = mergedVideos),
+                    episodesForSeason = getEpisodesForSeason(mergedVideos, state.selectedSeason)
+                )
+            }
+        }
+    }
+
+    private fun mergeEpisodeEnrichment(
+        video: Video,
+        episodeMap: Map<Pair<Int, Int>, TmdbEpisodeEnrichment>,
+        settings: TmdbSettings
+    ): Video {
+        val key = if (video.season != null && video.episode != null) {
+            video.season to video.episode
+        } else {
+            null
+        }
+        val ep = key?.let { episodeMap[it] }
+        return video.copy(
+            title = if (settings.useEpisodes) ep?.title ?: video.title else video.title,
+            overview = if (settings.useEpisodes) ep?.overview ?: video.overview else video.overview,
+            released = selectEpisodeReleaseValue(
+                addonReleased = video.released,
+                tmdbAirDate = ep?.airDate,
+                useTmdbReleaseDates = settings.useReleaseDates
+            ),
+            thumbnail = if (settings.useEpisodes) ep?.thumbnail ?: video.thumbnail else video.thumbnail,
+            runtime = if (settings.useEpisodes) ep?.runtimeMinutes ?: video.runtime else video.runtime
+        )
+    }
+
     private suspend fun enrichMeta(meta: Meta): Meta {
         val settings = tmdbSettingsDataStore.settings.first()
         if (!settings.enabled) return meta
@@ -1510,11 +1574,8 @@ class MetaDetailsViewModel @Inject constructor(
             ?: tmdbService.ensureTmdbId(itemId, itemType)
             ?: return meta
 
-        val isSeries = meta.apiType in listOf("series", "tv")
-        val needsEpisodes = (settings.useEpisodes || settings.useReleaseDates) && isSeries
 
-        // Fetch main enrichment and episode enrichment in parallel.
-        val (enrichment, episodeMap) = coroutineScope {
+        val enrichment = coroutineScope {
             val main = async(Dispatchers.IO) {
                 tmdbMetadataService.fetchEnrichment(
                     tmdbId = tmdbId,
@@ -1526,18 +1587,9 @@ class MetaDetailsViewModel @Inject constructor(
                     includeTrailers = settings.useTrailers
                 )
             }
-            val episodes = if (needsEpisodes) {
-                async(Dispatchers.IO) {
-                    val seasonNumbers = meta.videos.mapNotNull { it.season }.distinct()
-                    tmdbMetadataService.fetchEpisodeEnrichment(
-                        tmdbId = tmdbId,
-                        seasonNumbers = seasonNumbers,
-                        language = settings.language
-                    )
-                }
-            } else null
-            main.await() to episodes?.await()
+            main.await()
         }
+        // Episodes merge after the paint via loadEpisodeEnrichmentAsync; nothing above the list needs them.
 
         var updated = meta
 
@@ -1619,26 +1671,6 @@ class MetaDetailsViewModel @Inject constructor(
                     trailerYtIds = mergedTrailers.mapNotNull { it.ytId }.distinct()
                 )
             }
-        }
-
-        if (!episodeMap.isNullOrEmpty()) {
-            updated = updated.copy(
-                videos = meta.videos.map { video ->
-                    val key = if (video.season != null && video.episode != null) video.season to video.episode else null
-                    val ep = key?.let { episodeMap[it] }
-                    video.copy(
-                        title = if (settings.useEpisodes) ep?.title ?: video.title else video.title,
-                        overview = if (settings.useEpisodes) ep?.overview ?: video.overview else video.overview,
-                        released = selectEpisodeReleaseValue(
-                            addonReleased = video.released,
-                            tmdbAirDate = ep?.airDate,
-                            useTmdbReleaseDates = settings.useReleaseDates
-                        ),
-                        thumbnail = if (settings.useEpisodes) ep?.thumbnail ?: video.thumbnail else video.thumbnail,
-                        runtime = if (settings.useEpisodes) ep?.runtimeMinutes ?: video.runtime else video.runtime
-                    )
-                }
-            )
         }
 
         if (enrichment?.collectionId != null) {
