@@ -115,6 +115,21 @@ class AddonRepositoryImpl(
 
     private fun normalizeUrl(url: String): String = canonicalizeUrl(url).lowercase()
 
+    /** Local and WebDAV library rows are synthesised on every read and never stored; both URL spellings match. */
+    private val syntheticUrlPrefixes = listOf(
+        LocalLibraryGateway.SYNTHETIC_BASE_URL,
+        WebDavGateway.SYNTHETIC_BASE_URL
+    ).map { normalizeUrl(it) }
+
+    private fun isSyntheticUrl(url: String): Boolean {
+        val normalized = normalizeUrl(url)
+        return syntheticUrlPrefixes.any { normalized.startsWith(it) }
+    }
+
+    /** Drops synthetic URLs and repeats, the two ways the installed list gains a duplicate row. */
+    private fun installableUrls(urls: List<String>): List<String> =
+        urls.filterNot { isSyntheticUrl(it) }.distinctBy { normalizeUrl(it) }
+
     private fun triggerRemoteSync() {
         if (isSyncingFromRemote) {
             Log.d(TAG, "triggerRemoteSync: skipped (syncing from remote)")
@@ -238,7 +253,7 @@ class AddonRepositoryImpl(
             preferences.userSetNames,
             preferences.addonEnabledStates,
             manifestCacheRevision
-        ) { urls, names, enabledStates, _ -> Triple(urls, names, enabledStates) }
+        ) { urls, names, enabledStates, _ -> Triple(installableUrls(urls), names, enabledStates) }
         .flatMapLatest { (urls, userNames, enabledStates) ->
             flow {
                 if (urls.isEmpty()) {
@@ -344,6 +359,7 @@ class AddonRepositoryImpl(
     }
 
     override suspend fun addAddon(url: String) {
+        if (isSyntheticUrl(url)) return
         val cleanUrl = canonicalizeUrl(url)
         if (!preferences.addAddon(cleanUrl)) return
         triggerRemoteSync()
@@ -360,7 +376,8 @@ class AddonRepositoryImpl(
     }
 
     override suspend fun setAddonOrder(urls: List<String>) {
-        if (!preferences.setAddonOrder(urls)) return
+        // Synthetic rows are pinned and not installed, so they're dropped from the new order.
+        if (!preferences.setAddonOrder(installableUrls(urls))) return
         triggerRemoteSync()
     }
 
@@ -377,13 +394,12 @@ class AddonRepositoryImpl(
         remoteUrls: List<String>,
         removeMissingLocal: Boolean = true
     ) {
-        val normalizedRemote = remoteUrls
+        val normalizedRemote = installableUrls(remoteUrls)
             .map { canonicalizeUrl(it) }
             .filter { it.isNotBlank() }
-            .distinctBy { normalizeUrl(it) }
         val remoteSet = normalizedRemote.map { normalizeUrl(it) }.toSet()
 
-        val initialLocalUrls = preferences.installedAddonUrls.first()
+        val initialLocalUrls = installableUrls(preferences.installedAddonUrls.first())
         val initialLocalSet = initialLocalUrls.map { normalizeUrl(it) }.toSet()
         val shouldRemoveMissingLocal = if (removeMissingLocal && normalizedRemote.isEmpty() && initialLocalUrls.isNotEmpty()) {
             Log.w(
