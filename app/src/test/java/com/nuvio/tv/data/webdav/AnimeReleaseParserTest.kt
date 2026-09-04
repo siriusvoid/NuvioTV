@@ -400,4 +400,38 @@ class EpisodePlacementTest {
     /** JUnit's assertNotNull does not narrow the type, so unwrap where it is read. */
     private fun Placement?.orFail(): Placement =
         this ?: throw AssertionError("expected a placement")
+
+    @Test
+    fun `an accented database title matches the plain release spelling`() {
+        assertEquals(1f, AnimeReleaseParser.similarity("Polar Bear Cafe", "Polar Bear's Cafe\u0301"), 0.001f)
+        assertEquals(
+            "polar bear cafe",
+            AnimeReleaseParser.normalizeForCompare("Polar Bear's Cafe\u0301")
+        )
+    }
+
+    @Test
+    fun `a different show is still scored apart`() {
+        assertTrue(AnimeReleaseParser.similarity("Polar Bear Cafe", "Shirokuma Cafe") < 0.55f)
+    }
+
+    @Test
+    fun `a fansub file name yields the show title, not the group`() {
+        val parsed = AnimeReleaseParser.parseFile(
+            "[mudabone] Hidamari Sketch x Honeycomb - 01 [BD 720p Hi10P H264-AAC] [AEAABE13].ass"
+        )
+
+        assertEquals("Hidamari Sketch x Honeycomb", parsed.title)
+        assertEquals(1, parsed.episode)
+        assertNull(parsed.season)
+        assertEquals("mudabone", parsed.group)
+    }
+
+    @Test
+    fun `a horriblesubs file name yields its title and episode`() {
+        val parsed = AnimeReleaseParser.parseFile("[HorribleSubs] Polar Bear Cafe - 37 [720p].ass")
+
+        assertEquals("Polar Bear Cafe", parsed.title)
+        assertEquals(37, parsed.episode)
+    }
 }
