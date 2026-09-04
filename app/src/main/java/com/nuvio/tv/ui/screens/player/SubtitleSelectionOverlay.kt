@@ -1904,6 +1904,8 @@ private fun buildSubtitleOptionRailItems(
         .withIndex()
         .sortedWith(
             compareBy(
+                // Imported files first: the user's kept copy, and not in the installed-addon order.
+                { (_, subtitle) -> if (subtitle.isLocalFile) 0 else 1 },
                 { (_, subtitle) -> addonOrderMap[subtitle.addonName] ?: Int.MAX_VALUE },
                 { (index, _) -> index }
             )

@@ -281,6 +281,7 @@ fun SettingsScreen(
     onNavigateToLicensesAttributions: () -> Unit = {},
     onNavigateToLocalLibrary: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
+    onNavigateToImportedSubtitles: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel()
 ) {
@@ -743,7 +744,8 @@ fun SettingsScreen(
                                 onNavigateToPlugins = onNavigateToPlugins,
                                 onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
                                 onNavigateToSupportersContributors = onNavigateToSupportersContributors,
-                                onNavigateToLicensesAttributions = onNavigateToLicensesAttributions
+                                onNavigateToLicensesAttributions = onNavigateToLicensesAttributions,
+                                onNavigateToImportedSubtitles = onNavigateToImportedSubtitles
                             )
                         }
                     }
@@ -918,7 +920,8 @@ fun SettingsScreen(
                         onNavigateToPlugins = onNavigateToPlugins,
                         onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
                         onNavigateToSupportersContributors = onNavigateToSupportersContributors,
-                        onNavigateToLicensesAttributions = onNavigateToLicensesAttributions
+                        onNavigateToLicensesAttributions = onNavigateToLicensesAttributions,
+                        onNavigateToImportedSubtitles = onNavigateToImportedSubtitles
                     )
                 }
             }
@@ -946,7 +949,8 @@ private fun SettingsDetailPane(
     onNavigateToPlugins: () -> Unit,
     onNavigateToAuthQrSignIn: () -> Unit,
     onNavigateToSupportersContributors: () -> Unit,
-    onNavigateToLicensesAttributions: () -> Unit
+    onNavigateToLicensesAttributions: () -> Unit,
+    onNavigateToImportedSubtitles: () -> Unit
 ) {
     when (selectedCategory) {
         SettingsCategory.EXPERIENCE -> EssentialAdvancedSettingsContent(
@@ -994,7 +998,8 @@ private fun SettingsDetailPane(
                     contentFocusRequesters[SettingsCategory.PLAYBACK]
                 } else {
                     null
-                }
+                },
+                onNavigateToImportedSubtitles = onNavigateToImportedSubtitles
             )
         }
         SettingsCategory.ADVANCED -> if (isEssentialMode) {

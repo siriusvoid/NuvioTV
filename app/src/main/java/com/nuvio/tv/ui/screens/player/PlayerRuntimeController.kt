@@ -72,6 +72,7 @@ class PlayerRuntimeController(
     internal val addonRepository: AddonRepository,
     internal val pluginManager: PluginManager,
     internal val subtitleRepository: com.nuvio.tv.domain.repository.SubtitleRepository,
+    internal val importedSubtitles: com.nuvio.tv.domain.repository.ImportedSubtitleGateway,
     internal val parentalGuideRepository: ParentalGuideRepository,
     internal val trackingScrobbleCoordinator: TrackingScrobbleCoordinator,
     internal val traktEpisodeMappingService: TraktEpisodeMappingService,

@@ -13,6 +13,9 @@ data class Subtitle(
     val isStreamProvided: Boolean = false,
     val headers: Map<String, String>? = null
 ) {
+    /** An imported subtitle file, read off disk rather than over HTTP. */
+    val isLocalFile: Boolean get() = url.startsWith("file:", ignoreCase = true)
+
     fun getDisplayLanguage(): String = languageCodeToName(lang)
 
     companion object {

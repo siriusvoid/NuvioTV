@@ -43,6 +43,9 @@ import com.nuvio.tv.ui.screens.settings.webdav.WebDavReviewScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSettingsScreen
 import com.nuvio.tv.ui.screens.settings.webdav.WebDavSourceDetailScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.LocalLibrarySettingsScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.AddSubtitleFolderScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleFolderDetailScreen
+import com.nuvio.tv.ui.screens.settings.subtitles.SubtitleFoldersScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchListScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchPickerScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.SourceDetailScreen
@@ -1223,7 +1226,10 @@ private fun PlaybackNavHost(
                     navController.navigate(Screen.LicensesAttributions.route)
                 },
                 onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrarySettings.route) },
-                onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) }
+                onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) },
+                onNavigateToImportedSubtitles = {
+                    navController.navigate(Screen.SubtitleFolders.route)
+                }
             )
         }
 
@@ -1255,7 +1261,10 @@ private fun PlaybackNavHost(
 
         composable(Screen.PlaybackSettings.route) {
             PlaybackSettingsScreen(
-                onBackPress = { navController.popBackStack() }
+                onBackPress = { navController.popBackStack() },
+                onNavigateToImportedSubtitles = {
+                    navController.navigate(Screen.SubtitleFolders.route)
+                }
             )
         }
 
@@ -1405,6 +1414,34 @@ private fun PlaybackNavHost(
             ManualMatchPickerScreen(
                 sourceId = sourceId,
                 itemKey = itemKey,
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.SubtitleFolders.route) {
+            SubtitleFoldersScreen(
+                onBackPress = { navController.popBackStack() },
+                onNavigateToAddFolder = { navController.navigate(Screen.SubtitleFolderAdd.route) },
+                onNavigateToFolder = { sourceId ->
+                    navController.navigate(Screen.SubtitleFolderDetail.createRoute(sourceId))
+                }
+            )
+        }
+
+        composable(Screen.SubtitleFolderAdd.route) {
+            AddSubtitleFolderScreen(
+                onDone = { navController.popBackStack() },
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.SubtitleFolderDetail.route,
+            arguments = listOf(navArgument("sourceId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty()
+            SubtitleFolderDetailScreen(
+                sourceId = sourceId,
                 onBackPress = { navController.popBackStack() }
             )
         }

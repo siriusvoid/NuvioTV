@@ -528,6 +528,8 @@
     <string name="sub_show_only_preferred_languages_desc">Скрыть все остальные языки субтитров из списка выбора</string>
     <string name="sub_strip_sdh">Удалять субтитры SDH</string>
     <string name="sub_strip_sdh_desc">Скрывать описания звуков и обозначения говорящих в текстовых субтитрах</string>
+    <string name="sub_imported">Папки субтитров</string>
+    <string name="sub_imported_desc">Папки с файлами субтитров, хранящиеся на этом устройстве</string>
     <string name="sub_organization">Сортировка субтитров</string>
     <string name="sub_size">Размер</string>
     <string name="sub_vertical_offset">Вертикальное смещение</string>
@@ -3195,11 +3197,13 @@
     <string name="library_matched_count">сопоставлено: %1$d</string>
     <string name="library_unmatched">Не сопоставлено</string>
     <string name="folder_browser_select_storage">Выберите хранилище</string>
+    <string name="folder_browser_choose_drive">Выберите диск, откройте нужную папку и нажмите «Использовать эту папку»</string>
     <string name="folder_browser_use_this">Использовать эту папку</string>
     <string name="folder_browser_use_named">Использовать «%1$s»</string>
     <string name="folder_browser_no_subfolders">Нет вложенных папок — нажмите «Использовать эту папку» выше, чтобы выбрать эту.</string>
     <string name="local_library_addon_name">Локальная библиотека</string>
     <string name="webdav_addon_name">Библиотека WebDAV</string>
+    <string name="subtitle_folders_addon_name">Импортированные субтитры</string>
     <string name="local_library_error_unknown_catalog">Неизвестный локальный каталог: %1$s</string>
     <string name="local_library_error_source_not_configured">Источник %1$s не настроен</string>
     <string name="local_library_error_unknown_id">Неизвестный локальный ID: %1$s</string>
@@ -3243,6 +3247,35 @@
     <string name="local_library_no_candidates">Вариантов не найдено. Попробуйте другой тип выше или переименуйте файл, указав понятное название.</string>
     <string name="local_library_untitled">Без названия</string>
     <string name="local_library_folder_not_accessible">Папка недоступна</string>
+    <string name="subtitle_folders_screen_subtitle">Файлы субтитров, хранящиеся на этом устройстве.</string>
+    <string name="subtitle_folders_desc">Каждая папка сканируется, её релизы сопоставляются с сериалами по именам файлов и затем предлагаются в меню субтитров плеера.</string>
+    <string name="subtitle_folders_add">Добавить папку…</string>
+    <string name="subtitle_folders_add_sub">Папка с файлами субтитров на устройстве</string>
+    <string name="subtitle_folders_rescan_all">Пересканировать все папки</string>
+    <string name="subtitle_folders_rescan_all_sub">Заново проиндексировать все папки</string>
+    <string name="subtitle_folders_empty">Пока ничего не добавлено. Укажите папку с наборами субтитров — лучше всего, если в ней отдельная папка для каждого релиза.</string>
+    <string name="subtitle_folders_added">Добавленные папки</string>
+    <string name="subtitle_folders_add_title">Добавить папку субтитров</string>
+    <string name="subtitle_folders_add_desc">Выберите папку на этом устройстве для поиска файлов субтитров.</string>
+    <string name="subtitle_folders_new">Новая папка</string>
+    <string name="subtitle_folders_new_desc">Укажите папку с вашими наборами субтитров. Сканируется всё её содержимое, поэтому подойдёт и общая папка с множеством релизов.</string>
+    <string name="subtitle_folders_folder">Папка</string>
+    <string name="subtitle_folders_all_files_access">Для чтения файлов субтитров Nuvio нужен «Доступ ко всем файлам»: без него Android открывает только видеофайлы. Включите его для Nuvio и выберите папку снова.</string>
+    <string name="subtitle_folders_all_files_access_adb">На этом устройстве нет экрана «Доступ ко всем файлам». Выдайте разрешение через adb:\n%1$s</string>
+    <string name="subtitle_folders_add_and_scan">Добавить и сканировать</string>
+    <string name="subtitle_folders_add_failed">Не удалось добавить эту папку.</string>
+    <string name="subtitle_folders_not_readable">Эта папка больше недоступна для чтения.</string>
+    <string name="subtitle_folders_already_added">Эта папка уже добавлена.</string>
+    <string name="subtitle_folders_removed">Эта папка больше не добавлена.</string>
+    <string name="subtitle_folders_unmatched_count">не сопоставлено: %1$d</string>
+    <string name="subtitle_folders_enabled_sub">Предлагать эти субтитры в плеере.</string>
+    <string name="subtitle_folders_matched_releases">Сопоставленные релизы</string>
+    <string name="subtitle_folders_nothing_found">Здесь пока ничего не найдено. Пересканируйте, когда в папке появятся файлы.</string>
+    <string name="subtitle_folders_not_matched">%1$s · не сопоставлено</string>
+    <string name="subtitle_folders_pack_matched">сопоставлено %1$d/%2$d</string>
+    <string name="subtitle_folders_remove">Удалить папку</string>
+    <string name="subtitle_folders_remove_note">При удалении папки Nuvio удаляет только свой индекс. Ваши файлы субтитров никогда не копируются, не перемещаются и не удаляются.</string>
+    <string name="subtitle_folders_not_scanned">Ещё не сканировалось</string>
     <string name="webdav_screen_subtitle">Воспроизводите то, что уже есть в вашем аккаунте Debrid.</string>
     <string name="webdav_sources_desc">Каждый источник сканируется и сопоставляется с вашим аддоном метаданных, поэтому его торренты отображаются как обычные строки и как дополнительные потоки для уже доступного контента.</string>
     <string name="webdav_add_source_sub">Real-Debrid, TorBox или любой WebDAV-сервер</string>
@@ -3324,6 +3357,18 @@
         <item quantity="many">%d папок</item>
         <item quantity="other">%d папки</item>
     </plurals>
+    <plurals name="folder_browser_video_files">
+        <item quantity="one">%d видеофайл</item>
+        <item quantity="few">%d видеофайла</item>
+        <item quantity="many">%d видеофайлов</item>
+        <item quantity="other">%d видеофайла</item>
+    </plurals>
+    <plurals name="folder_browser_subtitle_files">
+        <item quantity="one">%d файл субтитров</item>
+        <item quantity="few">%d файла субтитров</item>
+        <item quantity="many">%d файлов субтитров</item>
+        <item quantity="other">%d файла субтитров</item>
+    </plurals>
     <plurals name="folder_browser_subfolders">
         <item quantity="one">%d вложенная папка</item>
         <item quantity="few">%d вложенные папки</item>
@@ -3341,6 +3386,18 @@
         <item quantity="few">проиндексировано элементов: %d</item>
         <item quantity="many">проиндексировано элементов: %d</item>
         <item quantity="other">проиндексировано элементов: %d</item>
+    </plurals>
+    <plurals name="subtitle_folders_releases">
+        <item quantity="one">%d релиз</item>
+        <item quantity="few">%d релиза</item>
+        <item quantity="many">%d релизов</item>
+        <item quantity="other">%d релиза</item>
+    </plurals>
+    <plurals name="subtitle_folders_scanning">
+        <item quantity="one">Сканирование… найдено релизов: %d</item>
+        <item quantity="few">Сканирование… найдено релизов: %d</item>
+        <item quantity="many">Сканирование… найдено релизов: %d</item>
+        <item quantity="other">Сканирование… найдено релизов: %d</item>
     </plurals>
     <plurals name="webdav_connected">
         <item quantity="one">Подключено. Найдено элементов: %d.</item>

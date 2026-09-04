@@ -279,6 +279,7 @@ fun HeroContentSection(
                                 onFocused = onHeroActionFocused
                             )
                         }
+
                     }
 
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))

@@ -2,13 +2,16 @@ package com.nuvio.tv.data.repository
 
 import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.network.safeApiCall
 import com.nuvio.tv.data.local.AddonPreferences
 import com.nuvio.tv.data.remote.api.AddonApi
+import com.nuvio.tv.data.subtitles.VideoIdentity
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.enabledAddons
+import com.nuvio.tv.domain.repository.ImportedSubtitleGateway
 import com.nuvio.tv.domain.repository.SubtitleRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -19,13 +22,15 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
 class SubtitleRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val addonRepository: AddonRepositoryImpl
+    private val addonRepository: AddonRepositoryImpl,
+    private val importedSubtitles: ImportedSubtitleGateway
 ) : SubtitleRepository {
 
     companion object {
@@ -46,13 +51,19 @@ class SubtitleRepositoryImpl @Inject constructor(
         val requestType = canonicalSubtitleType(type)
         val startedAtMs = System.currentTimeMillis()
         Log.d(TAG, "Fetching subtitles for type=$requestType, id=$id, videoId=$videoId")
-        
+
+        // Imported first, so a shared language picks the copy the user kept on the device.
+        val imported = importedSubtitlesFor(id, videoId)
+        if (imported.isNotEmpty() && onSubtitlesEmitted != null) {
+            withContext(Dispatchers.Main.immediate) { onSubtitlesEmitted.invoke(imported) }
+        }
+
         // Get installed addons
         val addons = try {
             addonRepository.getInstalledAddons().first().enabledAddons()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get installed addons", e)
-            return@withContext emptyList()
+            return@withContext imported
         }
 
         // Filter addons that support subtitles resource
@@ -65,17 +76,17 @@ class SubtitleRepositoryImpl @Inject constructor(
         Log.d(TAG, "Found ${subtitleAddons.size} subtitle addons: ${subtitleAddons.map { it.name }}")
 
         if (subtitleAddons.isEmpty()) {
-            return@withContext emptyList()
+            return@withContext imported
         }
 
         val total = subtitleAddons.size
         val completedCount = AtomicInteger(0)
         onProgress?.invoke(0, total, null)
 
-        val accumulatedSubtitles = java.util.Collections.synchronizedList(mutableListOf<Subtitle>())
+        val accumulatedSubtitles = java.util.Collections.synchronizedList(imported.toMutableList())
 
         // Fetch subtitles from all addons in parallel and stream results immediately
-        val result = supervisorScope {
+        val addonResults = supervisorScope {
             subtitleAddons.map { addon ->
                 async {
                     val addonStartMs = System.currentTimeMillis()
@@ -117,11 +128,44 @@ class SubtitleRepositoryImpl @Inject constructor(
                 }
             }.awaitAll().flatten()
         }
+        val result = imported + addonResults
         Log.d(
             TAG,
-            "Subtitle fetch completed total=${result.size} fromAddons=${subtitleAddons.size} in ${System.currentTimeMillis() - startedAtMs}ms"
+            "Subtitle fetch completed total=${result.size} imported=${imported.size} " +
+                "fromAddons=${subtitleAddons.size} in ${System.currentTimeMillis() - startedAtMs}ms"
         )
         result
+    }
+
+    /** Imported subtitles as addon subtitles; the local path tells the download code to read from disk. */
+    private suspend fun importedSubtitlesFor(id: String, videoId: String?): List<Subtitle> {
+        val playbackId = videoId?.takeIf { it.isNotBlank() } ?: id
+        val identity = VideoIdentity.parse(playbackId)
+        val matches = try {
+            importedSubtitles.subtitlesFor(
+                videoId = playbackId,
+                metaId = id,
+                season = identity.season,
+                episode = identity.episode
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read imported subtitles", e)
+            return emptyList()
+        }
+
+        return matches.map { match ->
+            Subtitle(
+                id = "${match.pack.id}:${match.file.fileName}",
+                url = importedSubtitles.subtitleUrl(match.file.path),
+                lang = match.pack.language,
+                // The folder tells one fansub group's translation from another.
+                addonName = File(match.pack.folderPath).name.takeIf { it.isNotBlank() }
+                    ?: context.getString(R.string.subtitle_folders_addon_name),
+                addonLogo = null
+            )
+        }
     }
 
     private fun canonicalSubtitleType(type: String): String {

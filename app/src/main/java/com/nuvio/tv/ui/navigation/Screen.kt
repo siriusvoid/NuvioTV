@@ -206,6 +206,14 @@ sealed class Screen(val route: String) {
         fun createRoute(sourceId: String, folderKey: String): String =
             "webdav_match_picker/${encode(sourceId)}/${encode(folderKey)}"
     }
+    data object SubtitleFolders : Screen("subtitle_folders")
+    data object SubtitleFolderAdd : Screen("subtitle_folder_add")
+    data object SubtitleFolderDetail : Screen("subtitle_folder_detail/{sourceId}") {
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+        fun createRoute(sourceId: String): String =
+            "subtitle_folder_detail/${encode(sourceId)}"
+    }
     data object ExperienceModeSelection : Screen("experience_mode_selection")
     data object LayoutSelection : Screen("layout_selection")
     data object LayoutSettings : Screen("layout_settings")

@@ -875,6 +875,8 @@
     <string name="sub_show_only_preferred_languages_desc">Hide all other subtitles languages from selection list</string>
     <string name="sub_strip_sdh">Strip SDH subtitles</string>
     <string name="sub_strip_sdh_desc">Hide sound descriptions and speaker labels from text subtitles</string>
+    <string name="sub_imported">Subtitle folders</string>
+    <string name="sub_imported_desc">Folders of subtitle files stored on this device</string>
     <string name="sub_organization">Subtitle Organization</string>
     <string name="sub_size">Size</string>
     <string name="sub_vertical_offset">Vertical Offset</string>
@@ -3252,11 +3254,13 @@
     <string name="library_matched_count">%1$d matched</string>
     <string name="library_unmatched">Unmatched</string>
     <string name="folder_browser_select_storage">Select storage</string>
+    <string name="folder_browser_choose_drive">Choose a drive, then open folders and press \"Use this folder\"</string>
     <string name="folder_browser_use_this">Use this folder</string>
     <string name="folder_browser_use_named">Use \"%1$s\"</string>
     <string name="folder_browser_no_subfolders">No subfolders — press \"Use this folder\" above to pick this one.</string>
     <string name="local_library_addon_name">Local library</string>
     <string name="webdav_addon_name">WebDAV library</string>
+    <string name="subtitle_folders_addon_name">Imported subtitles</string>
     <string name="local_library_error_unknown_catalog">Unknown local catalog: %1$s</string>
     <string name="local_library_error_source_not_configured">Source %1$s is not configured</string>
     <string name="local_library_error_unknown_id">Unknown local id: %1$s</string>
@@ -3300,6 +3304,35 @@
     <string name="local_library_no_candidates">No candidates returned. Try the other type above, or rename the file with a clear title.</string>
     <string name="local_library_untitled">Untitled</string>
     <string name="local_library_folder_not_accessible">Folder not accessible</string>
+    <string name="subtitle_folders_screen_subtitle">Subtitle files stored on this device.</string>
+    <string name="subtitle_folders_desc">Each folder is scanned and its releases matched to shows by their file names, then offered in the player\'s subtitle menu.</string>
+    <string name="subtitle_folders_add">Add folder…</string>
+    <string name="subtitle_folders_add_sub">On-device folder of subtitle files</string>
+    <string name="subtitle_folders_rescan_all">Rescan all folders</string>
+    <string name="subtitle_folders_rescan_all_sub">Re-index every folder</string>
+    <string name="subtitle_folders_empty">Nothing added yet. Point Nuvio at the folder holding your subtitle packs — one containing a folder per release is ideal.</string>
+    <string name="subtitle_folders_added">Added folders</string>
+    <string name="subtitle_folders_add_title">Add subtitle folder</string>
+    <string name="subtitle_folders_add_desc">Pick a folder on this device to scan for subtitle files.</string>
+    <string name="subtitle_folders_new">New folder</string>
+    <string name="subtitle_folders_new_desc">Point Nuvio at the folder holding your subtitle packs. Everything below it is scanned, so a parent folder of many releases is fine.</string>
+    <string name="subtitle_folders_folder">Folder</string>
+    <string name="subtitle_folders_all_files_access">Nuvio needs \"All files access\" to read subtitle files: Android grants it video files only. Turn it on for Nuvio, then choose the folder again.</string>
+    <string name="subtitle_folders_all_files_access_adb">This device has no All files access screen. Grant it over adb instead:\n%1$s</string>
+    <string name="subtitle_folders_add_and_scan">Add and scan</string>
+    <string name="subtitle_folders_add_failed">Could not add that folder.</string>
+    <string name="subtitle_folders_not_readable">That folder is no longer readable.</string>
+    <string name="subtitle_folders_already_added">That folder is already added.</string>
+    <string name="subtitle_folders_removed">This folder is no longer added.</string>
+    <string name="subtitle_folders_unmatched_count">%1$d unmatched</string>
+    <string name="subtitle_folders_enabled_sub">Offer these subtitles in the player.</string>
+    <string name="subtitle_folders_matched_releases">Matched releases</string>
+    <string name="subtitle_folders_nothing_found">Nothing found here yet. Rescan once the folder has files in it.</string>
+    <string name="subtitle_folders_not_matched">%1$s · not matched</string>
+    <string name="subtitle_folders_pack_matched">%1$d/%2$d matched</string>
+    <string name="subtitle_folders_remove">Remove folder</string>
+    <string name="subtitle_folders_remove_note">Removing a folder only drops Nuvio\'s index. Your subtitle files are never copied, moved or deleted.</string>
+    <string name="subtitle_folders_not_scanned">Not scanned yet</string>
     <string name="webdav_screen_subtitle">Play what your debrid account already holds.</string>
     <string name="webdav_sources_desc">Each source is scanned and matched to your metadata addon, so its torrents appear as ordinary rows and as extra streams on titles you already have.</string>
     <string name="webdav_add_source_sub">Real-Debrid, TorBox or any WebDAV server</string>
@@ -3377,6 +3410,14 @@
         <item quantity="one">%d folder</item>
         <item quantity="other">%d folders</item>
     </plurals>
+    <plurals name="folder_browser_video_files">
+        <item quantity="one">%d video file here</item>
+        <item quantity="other">%d video files here</item>
+    </plurals>
+    <plurals name="folder_browser_subtitle_files">
+        <item quantity="one">%d subtitle file here</item>
+        <item quantity="other">%d subtitle files here</item>
+    </plurals>
     <plurals name="folder_browser_subfolders">
         <item quantity="one">%d subfolder</item>
         <item quantity="other">%d subfolders</item>
@@ -3388,6 +3429,14 @@
     <plurals name="local_library_items_indexed">
         <item quantity="one">%d item indexed</item>
         <item quantity="other">%d items indexed</item>
+    </plurals>
+    <plurals name="subtitle_folders_releases">
+        <item quantity="one">%d release</item>
+        <item quantity="other">%d releases</item>
+    </plurals>
+    <plurals name="subtitle_folders_scanning">
+        <item quantity="one">Scanning… %d release found</item>
+        <item quantity="other">Scanning… %d releases found</item>
     </plurals>
     <plurals name="webdav_connected">
         <item quantity="one">Connected. Found %d entry.</item>
