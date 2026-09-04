@@ -2,6 +2,7 @@ package com.nuvio.tv.core.tmdb
 
 import android.util.Log
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.data.local.TmdbIdMappingStore
 import com.nuvio.tv.data.remote.api.TmdbApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -22,7 +23,8 @@ private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
  */
 @Singleton
 class TmdbService @Inject constructor(
-    private val tmdbApi: TmdbApi
+    private val tmdbApi: TmdbApi,
+    private val idMappingStore: TmdbIdMappingStore
 ) {
     // Cache: IMDB ID -> TMDB ID (keyed by "$imdbId:$mediaType")
     private val imdbToTmdbCache = ConcurrentHashMap<String, Int>()
@@ -35,6 +37,38 @@ class TmdbService @Inject constructor(
     
     // Mutex for thread-safe cache operations
     private val cacheMutex = Mutex()
+
+    @Volatile private var diskCacheLoaded = false
+    private val diskLoadMutex = Mutex()
+
+    /**
+     * Seeds the in-memory maps from disk once per process. Cheap to call on every lookup: after the
+     * first, it is a volatile read.
+     */
+    private suspend fun ensureDiskCacheLoaded() {
+        if (diskCacheLoaded) return
+        diskLoadMutex.withLock {
+            if (diskCacheLoaded) return
+            val snapshot = idMappingStore.load()
+            // putAll rather than assignment, so a lookup that resolved while this was reading is
+            // not dropped. Unparseable ids are skipped rather than trusted.
+            snapshot.imdbToTmdb.forEach { (key, value) ->
+                value.toIntOrNull()?.let { imdbToTmdbCache[key] = it }
+            }
+            tmdbToImdbCache.putAll(snapshot.tmdbToImdb)
+            diskCacheLoaded = true
+            Log.d(TAG, "Loaded ${snapshot.imdbToTmdb.size} id mappings from disk")
+        }
+    }
+
+    private suspend fun persistIdMappings() {
+        idMappingStore.save(
+            TmdbIdMappingStore.Snapshot(
+                imdbToTmdb = imdbToTmdbCache.mapValues { (_, id) -> id.toString() },
+                tmdbToImdb = tmdbToImdbCache.toMap()
+            )
+        )
+    }
     
     /**
      * Convert an IMDB ID to a TMDB ID.
@@ -52,6 +86,8 @@ class TmdbService @Inject constructor(
         
         val normalizedType = normalizeMediaType(mediaType)
         val cacheKey = "$imdbId:$normalizedType"
+
+        ensureDiskCacheLoaded()
 
         // Check cache first
         imdbToTmdbCache[cacheKey]?.let { cached ->
@@ -101,6 +137,7 @@ class TmdbService @Inject constructor(
                     imdbToTmdbCache[cacheKey] = found.id
                     tmdbToImdbCache["${found.id}:$normalizedType"] = imdbId
                 }
+                persistIdMappings()
 
                 requestDeferred.complete(found.id)
                  
@@ -133,6 +170,8 @@ class TmdbService @Inject constructor(
     suspend fun tmdbToImdb(tmdbId: Int, mediaType: String): String? = withContext(Dispatchers.IO) {
         val normalizedType = normalizeMediaType(mediaType)
         val cacheKey = "$tmdbId:$normalizedType"
+
+        ensureDiskCacheLoaded()
 
         // Check cache first
         tmdbToImdbCache[cacheKey]?.let { cached ->
@@ -175,6 +214,7 @@ class TmdbService @Inject constructor(
                     tmdbToImdbCache[cacheKey] = imdbId
                     imdbToTmdbCache["$imdbId:$normalizedType"] = tmdbId
                 }
+                persistIdMappings()
 
                 requestDeferred.complete(imdbId)
                  
