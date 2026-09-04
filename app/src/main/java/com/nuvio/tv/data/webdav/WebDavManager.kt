@@ -1,11 +1,8 @@
 package com.nuvio.tv.data.webdav
 
 import android.util.Log
-import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.data.matching.ReleaseMatcher
 import com.nuvio.tv.data.local.WebDavPreferences
-import com.nuvio.tv.domain.model.Addon
-import com.nuvio.tv.domain.model.Meta
-import com.nuvio.tv.domain.model.webdav.ParsedRelease
 import com.nuvio.tv.domain.model.webdav.PlacementStep
 import com.nuvio.tv.domain.model.webdav.ScanPhase
 import com.nuvio.tv.domain.model.webdav.WebDavConnectionResult
@@ -15,9 +12,6 @@ import com.nuvio.tv.domain.model.webdav.WebDavProvider
 import com.nuvio.tv.domain.model.webdav.WebDavReviewRow
 import com.nuvio.tv.domain.model.webdav.WebDavScanProgress
 import com.nuvio.tv.domain.model.webdav.WebDavSource
-import com.nuvio.tv.domain.repository.AddonRepository
-import com.nuvio.tv.domain.repository.MetaRepository
-import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,12 +41,7 @@ internal class WebDavManager @Inject constructor(
     private val preferences: WebDavPreferences,
     private val index: WebDavIndex,
     private val http: WebDavHttp,
-    private val animeSearch: AnimeSearchClient,
-    private val armMapping: ArmMappingClient,
-    // Lazy on both: the addon and meta repositories reach the WebDAV gateway, and
-    // the gateway reaches back here.
-    private val addonRepository: Lazy<AddonRepository>,
-    private val metaRepository: Lazy<MetaRepository>
+    private val releaseMatcher: ReleaseMatcher
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val scanJobs = ConcurrentHashMap<String, Job>()
@@ -322,192 +310,24 @@ internal class WebDavManager @Inject constructor(
 
     private suspend fun resolveFolder(source: WebDavSource, folder: WebDavFolder): WebDavMatch? {
         val parsed = AnimeReleaseParser.parseFolder(folder.name)
-        if (parsed.title.isBlank()) return null
-
-        val files = folder.files
-        val hits = animeSearch.search(parsed.title)
-        if (hits.isEmpty()) return null
-
-        val packSize = files.size
-        val (hit, confidence) = hits
-            .map { candidate -> candidate to scoreHit(candidate, parsed, packSize) }
-            .maxBy { it.second }
-        if (confidence < MIN_CONFIDENCE) return null
-
-        // Obscure titles have no entry in the mapper. The metadata addon serves anime id
-        // spaces directly, so fall back to the search hit's own id rather than dropping
-        // the folder.
-        val arm = armMapping.lookup(hit.source, hit.id)
-        val isMovie = hit.isMovie || arm?.media.equals("MOVIE", ignoreCase = true)
-        val contentType = if (isMovie) {
-            WebDavMatch.CONTENT_TYPE_MOVIE
-        } else {
-            WebDavMatch.CONTENT_TYPE_SERIES
-        }
-        val contentId = pickContentId(arm, contentType, hit) ?: return null
-
-        val meta = fetchMeta(contentType, contentId)
-
-        if (contentType == WebDavMatch.CONTENT_TYPE_MOVIE) {
-            return WebDavMatch(
-                folderKey = folder.key,
-                sourceId = source.id,
-                folderPath = folder.path,
-                contentId = contentId,
-                contentType = contentType,
-                title = hit.title,
-                poster = hit.poster,
-                metaName = meta?.name,
-                metaPoster = meta?.poster,
-                step = PlacementStep.MAPPER_SEASON.name,
-                confidence = confidence
-            )
-        }
-
-        val episodes = meta.toEpisodeSlots()
-        val firstEpisode = files
-            .mapNotNull { AnimeReleaseParser.parseFile(it.fileName).episode }
-            .minOrNull()
-            ?: parsed.episodeRange?.first
-            ?: parsed.episode
-
-        val placement = EpisodePlacement.place(
-            parsedEpisode = firstEpisode,
-            parsedSeason = parsed.season,
-            mapperSeason = arm?.season,
-            packSize = packSize,
-            entryStartEpochSeconds = hit.startDateEpochSeconds,
-            episodes = episodes
-        )
+        val match = releaseMatcher.match(parsed, folder.files.map { it.fileName }) ?: return null
 
         return WebDavMatch(
             folderKey = folder.key,
             sourceId = source.id,
             folderPath = folder.path,
-            contentId = contentId,
-            contentType = contentType,
-            title = hit.title,
-            poster = hit.poster,
-            metaName = meta?.name,
-            metaPoster = meta?.poster,
-            season = placement?.season ?: arm?.season,
-            // The offset falls out of placement: for a pack numbered inside its own
-            // cour it is zero, and for an absolute-numbered long-runner it shifts the
-            // whole folder onto the right season.
-            episodeOffset = if (placement != null && firstEpisode != null) {
-                placement.episode - firstEpisode
-            } else {
-                0
-            },
-            step = (placement?.step ?: PlacementStep.UNRESOLVED).name,
-            confidence = confidence
+            contentId = match.contentId,
+            contentType = match.contentType,
+            title = match.title,
+            poster = match.poster,
+            metaName = match.meta?.name,
+            metaPoster = match.meta?.poster,
+            season = match.season,
+            episodeOffset = match.episodeOffset,
+            step = match.step.name,
+            confidence = match.confidence
         )
     }
-
-    /**
-     * The installed metadata addon's view of this item. Used for the episode list and
-     * for the catalogue's name and artwork, so rows read the same as the details page.
-     */
-    private suspend fun fetchMeta(contentType: String, contentId: String): Meta? =
-        withTimeoutOrNull(META_TIMEOUT_MS) {
-            val result = runCatching {
-                metaRepository.get().getMetaFromAllAddons(contentType, contentId)
-                    .first { it !is NetworkResult.Loading }
-            }.getOrNull()
-            (result as? NetworkResult.Success)?.data
-        }
-
-    private fun Meta?.toEpisodeSlots(): List<EpisodeSlot> {
-        val meta = this ?: return emptyList()
-        return meta.videos.mapNotNull { video ->
-            val season = video.season ?: return@mapNotNull null
-            val episode = video.episode ?: return@mapNotNull null
-            EpisodeSlot(
-                season = season,
-                episode = episode,
-                releasedEpochSeconds = parseIsoDateToEpochSeconds(video.released)
-            )
-        }
-    }
-
-    private fun scoreHit(hit: AnimeSearchHit, parsed: ParsedRelease, packSize: Int): Float {
-        val titleScore = hit.allTitles.maxOfOrNull { candidate ->
-            AnimeReleaseParser.similarity(parsed.title, candidate)
-        } ?: 0f
-
-        var score = titleScore
-        if (hit.episodeCount != null && packSize > 1 && hit.episodeCount == packSize) score += 0.12f
-        if (parsed.episodeRange != null && hit.episodeCount == parsed.episodeRange.last) score += 0.08f
-
-        // A cour is its own entry in the anime databases, so a season stated in the
-        // release name should pull the matching entry up and push the others down.
-        parsed.season?.let { season ->
-            val titleSeason = hit.allTitles.firstNotNullOfOrNull { seasonNumberIn(it) }
-            when {
-                titleSeason == season -> score += 0.15f
-                titleSeason != null -> score -= 0.20f
-                season > 1 -> score -= 0.05f
-            }
-        }
-        if (hit.subtype?.lowercase() in setOf("special", "ova", "ona") && !parsed.isSpecial) {
-            score -= 0.15f
-        }
-        return score.coerceIn(0f, 1f)
-    }
-
-    /** The season a database title names, e.g. "2nd Season" or "Season 2". */
-    private fun seasonNumberIn(title: String): Int? =
-        ORDINAL_SEASON_IN_TITLE.find(title)?.groupValues?.get(1)?.toIntOrNull()
-            ?: WORD_SEASON_IN_TITLE.find(title)?.groupValues?.get(1)?.toIntOrNull()
-
-    /**
-     * Emits the id space the installed metadata addon actually serves, so mapped
-     * items are the same objects as the ones already in the user's catalogue.
-     */
-    private suspend fun pickContentId(
-        arm: ArmIds?,
-        contentType: String,
-        hit: AnimeSearchHit
-    ): String? {
-        val candidates = buildList {
-            arm?.imdb?.let { add(it) }
-            arm?.themoviedb?.let { add("tmdb:$it") }
-            arm?.thetvdb?.let { add("tvdb:$it") }
-            arm?.kitsu?.let { add("kitsu:$it") }
-            arm?.myanimelist?.let { add("mal:$it") }
-            arm?.anilist?.let { add("anilist:$it") }
-            arm?.anidb?.let { add("anidb:$it") }
-            // Last resort: the id the search itself returned.
-            when (hit.source) {
-                AnimeSearchHit.SOURCE_KITSU -> add("kitsu:${hit.id}")
-                AnimeSearchHit.SOURCE_MAL -> add("mal:${hit.id}")
-            }
-        }
-        if (candidates.isEmpty()) return null
-
-        val servedPrefixes = runCatching {
-            addonRepository.get().getInstalledAddons().first()
-        }.getOrDefault(emptyList())
-            .filter { it.enabled }
-            .filter { addon -> addon.servesMetaFor(contentType) }
-            .flatMap { addon ->
-                addon.resources.filter { it.name == "meta" }.flatMap { it.idPrefixes.orEmpty() } +
-                    addon.idPrefixes
-            }
-            .filter { it.isNotBlank() }
-            .distinct()
-
-        return candidates.firstOrNull { candidate ->
-            servedPrefixes.any { prefix -> candidate.startsWith(prefix) }
-        } ?: candidates.first()
-    }
-
-    private fun Addon.servesMetaFor(contentType: String): Boolean =
-        resources.any { resource ->
-            resource.name == "meta" && resource.types.any { type ->
-                type == contentType || type.endsWith(".$contentType") || type == "anime"
-            }
-        }
 
     // ----------------------------------------------------------------- review
 
@@ -527,7 +347,7 @@ internal class WebDavManager @Inject constructor(
             }
     }
 
-    suspend fun searchForOverride(query: String): List<AnimeSearchHit> = animeSearch.search(query)
+    suspend fun searchForOverride(query: String): List<AnimeSearchHit> = releaseMatcher.search(query)
 
     /** Applies a manual correction. Rescans never overwrite it. */
     suspend fun applyOverride(
@@ -538,27 +358,21 @@ internal class WebDavManager @Inject constructor(
     ): Result<WebDavMatch> {
         val sourceId = folderKey.substringBefore('|')
         val folderPath = folderKey.substringAfter('|')
-        val arm = armMapping.lookup(hit.source, hit.id)
-        val contentType = if (treatAsMovie || hit.isMovie) {
-            WebDavMatch.CONTENT_TYPE_MOVIE
-        } else {
-            WebDavMatch.CONTENT_TYPE_SERIES
-        }
-        val contentId = pickContentId(arm, contentType, hit)
+        val resolved = releaseMatcher.resolveHit(hit, treatAsMovie)
             ?: return Result.failure(IllegalStateException("No id mapping exists for ${hit.title}."))
 
-        val meta = fetchMeta(contentType, contentId)
+        val meta = resolved.meta
         val match = WebDavMatch(
             folderKey = folderKey,
             sourceId = sourceId,
             folderPath = folderPath,
-            contentId = contentId,
-            contentType = contentType,
+            contentId = resolved.contentId,
+            contentType = resolved.contentType,
             title = hit.title,
             poster = hit.poster,
             metaName = meta?.name,
             metaPoster = meta?.poster,
-            season = season ?: arm?.season,
+            season = season ?: resolved.armSeason,
             step = PlacementStep.MANUAL.name,
             confidence = 1f,
             userSet = true
@@ -617,18 +431,11 @@ internal class WebDavManager @Inject constructor(
 
     private companion object {
         const val TAG = "WebDavManager"
-        const val MIN_CONFIDENCE = 0.55f
-        const val META_TIMEOUT_MS = 8_000L
-
         /** A listing shorter than this fraction of the last one is treated as truncated. */
         const val LISTING_SHRINK_FLOOR = 0.8
 
         /** Upper bound on the folders one scan may question, so a bad listing cannot storm. */
         const val MAX_DELETION_CHECKS = 20
-
-        val ORDINAL_SEASON_IN_TITLE =
-            Regex("(\\d{1,2})(?:st|nd|rd|th)\\s+Season", RegexOption.IGNORE_CASE)
-        val WORD_SEASON_IN_TITLE = Regex("\\bSeason\\s*(\\d{1,2})\\b", RegexOption.IGNORE_CASE)
     }
 }
 
