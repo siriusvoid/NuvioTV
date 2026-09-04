@@ -141,7 +141,10 @@ class AddonPreferences @Inject constructor(
             if (active != null && !active.isPrimary && active.usesPrimaryAddons) return false
         var changed = false
         store().edit { preferences ->
-            val orderedUrls = urls.map(::canonicalizeUrl)
+            // addAddon refuses a URL the list already holds; the same rule applies here, where a
+            // whole list is written at once. Two entries that canonicalize alike are one addon, and
+            // the addon manager keys its list by URL - a repeat crashes it on the duplicate key.
+            val orderedUrls = urls.map(::canonicalizeUrl).distinctBy { it.lowercase() }
             val currentUrls = getCurrentList(preferences).map(::canonicalizeUrl)
             if (orderedUrls == currentUrls) return@edit
             preferences[orderedUrlsKey] = gson.toJson(orderedUrls)
