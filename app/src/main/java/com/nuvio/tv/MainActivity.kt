@@ -165,6 +165,7 @@ import com.nuvio.tv.domain.model.resolveAppTheme
 import com.nuvio.tv.domain.model.resolveCustomThemeColors
 import com.nuvio.tv.domain.deeplink.AppDeepLink
 import com.nuvio.tv.domain.repository.AddonRepository
+import com.nuvio.tv.domain.repository.WebDavGateway
 import com.nuvio.tv.ui.components.NuvioScrollDefaults
 import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.LocalCardDepthStyle
@@ -267,6 +268,9 @@ open class MainActivity : ComponentActivity() {
     lateinit var addonRepository: AddonRepository
 
     @Inject
+    lateinit var webDavGateway: WebDavGateway
+
+    @Inject
     lateinit var trackingProgressRefreshCoordinator: TrackingProgressRefreshCoordinator
 
     @Inject
@@ -353,6 +357,11 @@ open class MainActivity : ComponentActivity() {
         externalPlaybackTracker.activityLauncher = externalPlayerLauncher
 
         PluginRuntimeHooks.onActivityCreate(this)
+
+        // A debrid share gains torrents while the app is closed, so the library is
+        // refreshed once per process. Folders whose modified time is unchanged are
+        // reused from the index, so this is one root listing in the usual case.
+        webDavGateway.scanOnLaunch()
 
         window?.decorView?.post {
             val snapshot = com.nuvio.tv.core.player.DisplayCapabilities.detect(this)

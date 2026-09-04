@@ -12,6 +12,7 @@ import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.domain.repository.MetaRepository
+import com.nuvio.tv.domain.repository.WebDavGateway
 import com.nuvio.tv.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -166,6 +167,14 @@ class MetaRepositoryImpl @Inject constructor(
                 metaCache[localCacheKey] = CachedMeta(result.data, System.currentTimeMillis() + DEFAULT_TTL_MS)
             }
             emit(result)
+            return@flow
+        }
+
+        // The WebDAV library serves catalogue rows and streams but no meta: its items
+        // keep the metadata addon's own ids. A request routed here by the catalogue's
+        // base URL belongs to the real addons, which is where the caller falls back to.
+        if (addonBaseUrl.startsWith(WebDavGateway.SYNTHETIC_BASE_URL)) {
+            emit(NetworkResult.Error("The WebDAV library does not serve metadata"))
             return@flow
         }
 
