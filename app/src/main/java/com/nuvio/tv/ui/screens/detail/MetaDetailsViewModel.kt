@@ -1519,7 +1519,11 @@ class MetaDetailsViewModel @Inject constructor(
                 tmdbMetadataService.fetchEnrichment(
                     tmdbId = tmdbId,
                     contentType = tmdbContentType,
-                    language = settings.language
+                    language = settings.language,
+                    // This blocks the first paint, and both sections are discarded at render
+                    // when their toggle is off.
+                    includeCredits = settings.useCredits,
+                    includeTrailers = settings.useTrailers
                 )
             }
             val episodes = if (needsEpisodes) {

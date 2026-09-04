@@ -82,6 +82,77 @@ class TmdbMetadataServiceTest {
         assertEquals(77, enrichment?.networks?.firstOrNull()?.tmdbId)
     }
 
+    /**
+     * A caller waits for the slowest request in the set. Credits and trailers are left unstubbed
+     * deliberately: a strict mock throws on an unstubbed call, so a regression that requests them
+     * anyway fails here loudly rather than quietly costing a round trip.
+     */
+    @Test
+    fun `declining credits and trailers skips those requests`() = runTest {
+        val api = mockk<TmdbApi>()
+        coEvery { api.getTvDetails(any(), any(), any()) } returns Response.success(
+            TmdbDetailsResponse(
+                id = 30,
+                name = "Core Show",
+                overview = "From details",
+                status = "Ended"
+            )
+        )
+        coEvery { api.getTvImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
+        coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
+
+        val service = TmdbMetadataService(api)
+
+        val enrichment = service.fetchEnrichment(
+            tmdbId = "30",
+            contentType = ContentType.SERIES,
+            language = "en",
+            includeCredits = false,
+            includeTrailers = false
+        )
+
+        assertNotNull(enrichment)
+        assertEquals("Ended", enrichment?.status)
+        assertEquals("From details", enrichment?.description)
+        assertTrue("credits were skipped, so there is no cast", enrichment?.castMembers.orEmpty().isEmpty())
+        assertTrue("trailers were skipped", enrichment?.trailers.orEmpty().isEmpty())
+        coVerify(exactly = 0) { api.getTvAggregateCredits(any(), any(), any()) }
+        coVerify(exactly = 0) { api.getTvVideos(any(), any(), any()) }
+    }
+
+    /** A trimmed result must never be handed to a caller that asked for more. */
+    @Test
+    fun `a trimmed result is not reused for a fuller one`() = runTest {
+        val api = mockk<TmdbApi>()
+        coEvery { api.getTvDetails(any(), any(), any()) } returns Response.success(
+            TmdbDetailsResponse(id = 40, name = "Both Ways", status = "Ended")
+        )
+        coEvery { api.getTvImages(any(), any(), any()) } returns Response.success(TmdbImagesResponse())
+        coEvery { api.getTvContentRatings(any(), any()) } returns Response.success(TmdbTvContentRatingsResponse())
+        coEvery { api.getTvAggregateCredits(any(), any(), any()) } returns Response.success(
+            TmdbAggregateCreditsResponse(
+                cast = listOf(
+                    TmdbAggregateCastMember(
+                        id = 9,
+                        name = "Real Actor",
+                        roles = listOf(TmdbAggregateRole(character = "Lead"))
+                    )
+                )
+            )
+        )
+        coEvery { api.getTvVideos(any(), any(), any()) } returns Response.success(TmdbVideosResponse(id = 40))
+
+        val service = TmdbMetadataService(api)
+
+        val core = service.fetchEnrichment(
+            "40", ContentType.SERIES, "en", includeCredits = false, includeTrailers = false
+        )
+        val full = service.fetchEnrichment("40", ContentType.SERIES, "en")
+
+        assertTrue("the trimmed pass has no cast", core?.castMembers.orEmpty().isEmpty())
+        assertFalse("the full pass must fetch its own credits", full?.castMembers.orEmpty().isEmpty())
+    }
+
     @Test
     fun `fetchEnrichment formats ongoing tv release range`() = runTest {
         val api = mockk<TmdbApi>()
