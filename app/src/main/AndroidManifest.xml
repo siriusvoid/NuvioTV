@@ -26,6 +26,14 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!--
+        Imported subtitles: READ_MEDIA_VIDEO covers video files only, so a .srt or
+        .ass on shared storage cannot be opened without this. Android TV has no
+        document picker to grant access folder by folder instead.
+    -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <uses-feature
         android:name="android.hardware.touchscreen"

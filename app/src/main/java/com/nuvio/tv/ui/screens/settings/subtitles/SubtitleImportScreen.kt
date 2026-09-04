@@ -33,6 +33,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.core.storage.AllFilesAccess
 import com.nuvio.tv.domain.model.subtitles.isSubtitleFileName
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
@@ -54,7 +55,10 @@ fun SubtitleImportScreen(
 
     var showBrowser by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
+    var needsAllFilesAccess by remember { mutableStateOf(false) }
+    var grantScreenMissing by remember { mutableStateOf(false) }
 
+    // Below Android 11 this one permission covers the whole volume.
     val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_VIDEO
     } else {
@@ -71,10 +75,38 @@ fun SubtitleImportScreen(
         if (granted) showBrowser = true
     }
 
+    val allFilesLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // The grant screen says nothing about what was chosen, so read the real state.
+        val granted = AllFilesAccess.isGranted()
+        needsAllFilesAccess = !granted
+        if (granted) showBrowser = true
+    }
+
+    fun requestAllFilesAccess() {
+        needsAllFilesAccess = true
+        // Try each intent: a missing Settings screen only shows up as a failed launch.
+        val launched = AllFilesAccess.grantIntents(context).any { intent ->
+            runCatching { allFilesLauncher.launch(intent) }.isSuccess
+        }
+        grantScreenMissing = !launched
+    }
+
     fun browse() {
         permissionDenied = false
         viewModel.clearResult()
-        if (hasStoragePermission()) showBrowser = true else permissionLauncher.launch(storagePermission)
+        when {
+            !AllFilesAccess.isRequired ->
+                if (hasStoragePermission()) showBrowser = true else permissionLauncher.launch(storagePermission)
+
+            AllFilesAccess.isGranted() -> {
+                needsAllFilesAccess = false
+                showBrowser = true
+            }
+
+            else -> requestAllFilesAccess()
+        }
     }
 
     // Choosing the folder is the screen's only job, so open the browser straight away.
@@ -151,6 +183,23 @@ fun SubtitleImportScreen(
                             color = NuvioTheme.colors.Error
                         )
                     }
+                    if (needsAllFilesAccess) {
+                        Text(
+                            text = "Nuvio needs \"All files access\" to read subtitle files: " +
+                                "Android grants it video files only. Turn it on for Nuvio, then " +
+                                "choose the folder again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NuvioTheme.colors.Error
+                        )
+                        if (grantScreenMissing) {
+                            Text(
+                                text = "This device has no All files access screen. Grant it over " +
+                                    "adb instead:\n${AllFilesAccess.adbCommand(context)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NuvioTheme.colors.TextSecondary
+                            )
+                        }
+                    }
                 }
             }
 
@@ -168,6 +217,17 @@ fun SubtitleImportScreen(
                     )
                 ) {
                     Text(if (state.result == null) "Choose folder…" else "Import another folder…")
+                }
+                if (needsAllFilesAccess && !grantScreenMissing) {
+                    Button(
+                        onClick = { requestAllFilesAccess() },
+                        colors = ButtonDefaults.colors(
+                            containerColor = NuvioTheme.colors.BackgroundCard,
+                            contentColor = NuvioTheme.colors.TextPrimary
+                        )
+                    ) {
+                        Text("Grant access…")
+                    }
                 }
                 Button(
                     onClick = onBackPress,
