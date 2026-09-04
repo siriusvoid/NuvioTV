@@ -10,6 +10,7 @@ import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.repository.CatalogRepository
 import com.nuvio.tv.domain.repository.LocalLibraryGateway
+import com.nuvio.tv.domain.repository.WebDavGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -21,7 +22,8 @@ import javax.inject.Singleton
 class CatalogRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
-    private val localLibraryGateway: LocalLibraryGateway
+    private val localLibraryGateway: LocalLibraryGateway,
+    private val webDavGateway: WebDavGateway
 ) : CatalogRepository {
     companion object {
         private const val TAG = "CatalogRepository"
@@ -43,6 +45,11 @@ class CatalogRepositoryImpl @Inject constructor(
 
         if (localLibraryGateway.isLocalLibrary(addonId, addonBaseUrl)) {
             emit(localLibraryGateway.catalog(catalogId, skip, skipStep))
+            return@flow
+        }
+
+        if (webDavGateway.isWebDavAddon(addonId, addonBaseUrl)) {
+            emit(webDavGateway.catalog(catalogId, skip, skipStep, extraArgs))
             return@flow
         }
 

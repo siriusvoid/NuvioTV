@@ -12,6 +12,7 @@ import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.LocalLibraryGateway
+import com.nuvio.tv.domain.repository.WebDavGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,7 @@ class AddonRepositoryImpl(
     private val addonSyncService: AddonSyncService,
     private val authManager: AuthManager,
     private val localLibraryGateway: LocalLibraryGateway,
+    private val webDavGateway: WebDavGateway,
     private val context: Context,
     /**
      * The dispatcher backing syncScope, the manifest cache disk IO and installedAddonsFlow.
@@ -69,6 +71,7 @@ class AddonRepositoryImpl(
         addonSyncService: AddonSyncService,
         authManager: AuthManager,
         localLibraryGateway: LocalLibraryGateway,
+        webDavGateway: WebDavGateway,
         @ApplicationContext context: Context
     ) : this(
         api = api,
@@ -76,6 +79,7 @@ class AddonRepositoryImpl(
         addonSyncService = addonSyncService,
         authManager = authManager,
         localLibraryGateway = localLibraryGateway,
+        webDavGateway = webDavGateway,
         context = context,
         dispatcher = Dispatchers.IO,
         clock = System::currentTimeMillis
@@ -298,14 +302,23 @@ class AddonRepositoryImpl(
         .stateIn(syncScope, SharingStarted.Eagerly, emptyList<Addon>())
 
     override fun getInstalledAddons(): Flow<List<Addon>> =
-        combine(installedAddonsFlow, localLibraryGateway.synthesizeAddon()) { addons, synthetic ->
-            if (synthetic != null) listOf(synthetic) + addons else addons
+        combine(
+            installedAddonsFlow,
+            localLibraryGateway.synthesizeAddon(),
+            webDavGateway.synthesizeAddon()
+        ) { addons, localLibrary, webDav ->
+            listOfNotNull(localLibrary, webDav) + addons
         }
 
     override suspend fun fetchAddon(baseUrl: String): NetworkResult<Addon> {
         if (localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = baseUrl)) {
             val synthetic = localLibraryGateway.synthesizeAddon().first()
                 ?: return NetworkResult.Error("Local Library has no enabled sources")
+            return NetworkResult.Success(synthetic)
+        }
+        if (webDavGateway.isWebDavAddon(addonId = null, baseUrl = baseUrl)) {
+            val synthetic = webDavGateway.synthesizeAddon().first()
+                ?: return NetworkResult.Error("WebDAV library has no enabled sources")
             return NetworkResult.Success(synthetic)
         }
         val cleanBaseUrl = canonicalizeUrl(baseUrl)

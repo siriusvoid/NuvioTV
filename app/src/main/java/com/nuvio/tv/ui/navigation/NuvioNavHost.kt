@@ -31,6 +31,11 @@ import com.nuvio.tv.ui.screens.player.PlayerScreen
 import com.nuvio.tv.ui.screens.player.PostPlayRecommendation
 import com.nuvio.tv.ui.screens.plugin.PluginScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.AddSourceScreen
+import com.nuvio.tv.ui.screens.settings.webdav.AddWebDavSourceScreen
+import com.nuvio.tv.ui.screens.settings.webdav.WebDavMatchPickerScreen
+import com.nuvio.tv.ui.screens.settings.webdav.WebDavReviewScreen
+import com.nuvio.tv.ui.screens.settings.webdav.WebDavSettingsScreen
+import com.nuvio.tv.ui.screens.settings.webdav.WebDavSourceDetailScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.LocalLibrarySettingsScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchListScreen
 import com.nuvio.tv.ui.screens.settings.locallibrary.ManualMatchPickerScreen
@@ -1171,7 +1176,8 @@ fun NuvioNavHost(
                 onNavigateToLicensesAttributions = {
                     navController.navigate(Screen.LicensesAttributions.route)
                 },
-                onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrarySettings.route) }
+                onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrarySettings.route) },
+                onNavigateToWebDav = { navController.navigate(Screen.WebDavSettings.route) }
             )
         }
 
@@ -1353,6 +1359,67 @@ fun NuvioNavHost(
             ManualMatchPickerScreen(
                 sourceId = sourceId,
                 itemKey = itemKey,
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.WebDavSettings.route) {
+            WebDavSettingsScreen(
+                onBackPress = { navController.popBackStack() },
+                onNavigateToAddSource = { navController.navigate(Screen.WebDavAddSource.route) },
+                onNavigateToSourceDetail = { sourceId ->
+                    navController.navigate(Screen.WebDavSourceDetail.createRoute(sourceId))
+                }
+            )
+        }
+
+        composable(Screen.WebDavAddSource.route) {
+            AddWebDavSourceScreen(
+                onDone = { navController.popBackStack() },
+                onBackPress = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.WebDavSourceDetail.route,
+            arguments = listOf(navArgument("sourceId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty()
+            WebDavSourceDetailScreen(
+                sourceId = sourceId,
+                onBackPress = { navController.popBackStack() },
+                onNavigateToReview = { sid ->
+                    navController.navigate(Screen.WebDavReview.createRoute(sid))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.WebDavReview.route,
+            arguments = listOf(navArgument("sourceId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty()
+            WebDavReviewScreen(
+                sourceId = sourceId,
+                onBackPress = { navController.popBackStack() },
+                onNavigateToPicker = { sid, folderKey ->
+                    navController.navigate(Screen.WebDavMatchPicker.createRoute(sid, folderKey))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.WebDavMatchPicker.route,
+            arguments = listOf(
+                navArgument("sourceId") { type = NavType.StringType },
+                navArgument("folderKey") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId").orEmpty()
+            val folderKey = backStackEntry.arguments?.getString("folderKey").orEmpty()
+            WebDavMatchPickerScreen(
+                sourceId = sourceId,
+                folderKey = folderKey,
                 onBackPress = { navController.popBackStack() }
             )
         }

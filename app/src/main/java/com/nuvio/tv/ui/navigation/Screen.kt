@@ -184,6 +184,26 @@ sealed class Screen(val route: String) {
         fun createRoute(sourceId: String, itemKey: String): String =
             "local_library_match_picker/${encode(sourceId)}/${encode(itemKey)}"
     }
+    data object WebDavSettings : Screen("webdav_settings")
+    data object WebDavAddSource : Screen("webdav_add_source")
+    data object WebDavSourceDetail : Screen("webdav_source_detail/{sourceId}") {
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+        fun createRoute(sourceId: String): String =
+            "webdav_source_detail/${encode(sourceId)}"
+    }
+    data object WebDavReview : Screen("webdav_review/{sourceId}") {
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+        fun createRoute(sourceId: String): String =
+            "webdav_review/${encode(sourceId)}"
+    }
+    data object WebDavMatchPicker : Screen("webdav_match_picker/{sourceId}/{folderKey}") {
+        private fun encode(value: String): String =
+            URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+        fun createRoute(sourceId: String, folderKey: String): String =
+            "webdav_match_picker/${encode(sourceId)}/${encode(folderKey)}"
+    }
     data object ExperienceModeSelection : Screen("experience_mode_selection")
     data object LayoutSelection : Screen("layout_selection")
     data object LayoutSettings : Screen("layout_settings")
