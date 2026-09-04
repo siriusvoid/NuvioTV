@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.core.tmdb.isGeneratedTmdbEpisodeTitle
 import com.nuvio.tv.core.util.isEpisodeReleaseAired
 import com.nuvio.tv.core.util.parseEpisodeReleaseInstant
 import com.nuvio.tv.core.util.selectEpisodeReleaseValue
@@ -2028,6 +2029,7 @@ private suspend fun HomeViewModel.enrichInProgressItem(
             backdrop = if (settings.useArtwork) tmdbData?.backdrop.normalizeImageUrl() ?: meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop else meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop,
             logo = if (settings.useArtwork) tmdbData?.logo.normalizeImageUrl() ?: meta.logo.normalizeImageUrl() ?: item.progress.logo else meta.logo.normalizeImageUrl() ?: item.progress.logo,
             episodeTitle = if (settings.useEpisodes) tmdbData?.episodeTitle
+                ?.takeUnless { isGeneratedTmdbEpisodeTitle(it, video?.episode) }
                 ?: video?.title?.takeIf { it.isNotBlank() }
                 ?: item.progress.episodeTitle
             else video?.title?.takeIf { it.isNotBlank() } ?: item.progress.episodeTitle

@@ -1672,6 +1672,19 @@ data class TmdbEnrichment(
     val trailers: List<MetaTrailer> = emptyList()
 )
 
+/**
+ * TMDB fills a missing localized episode title with a generated "Episode N" — "Эпизод 1" in
+ * Russian — which is non-null, so a plain `?:` fallback never reaches the addon's real name.
+ * Only treated as generated when the trailing number is this episode's own.
+ */
+fun isGeneratedTmdbEpisodeTitle(title: String?, episodeNumber: Int?): Boolean {
+    if (title.isNullOrBlank() || episodeNumber == null) return false
+    val match = GENERATED_EPISODE_TITLE.matchEntire(title.trim()) ?: return false
+    return match.groupValues[1].toIntOrNull() == episodeNumber
+}
+
+private val GENERATED_EPISODE_TITLE = Regex("""^\p{L}[\p{L}.]{0,14}\s*(\d{1,4})$""")
+
 data class TmdbEpisodeEnrichment(
     val title: String?,
     val overview: String?,

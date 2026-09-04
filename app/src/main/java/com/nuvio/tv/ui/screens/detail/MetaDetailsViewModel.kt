@@ -8,6 +8,7 @@ import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.profile.ProfileManager
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.tmdb.TmdbEpisodeEnrichment
+import com.nuvio.tv.core.tmdb.isGeneratedTmdbEpisodeTitle
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
@@ -1556,7 +1557,11 @@ class MetaDetailsViewModel @Inject constructor(
         }
         val ep = key?.let { episodeMap[it] }
         return video.copy(
-            title = if (settings.useEpisodes) ep?.title ?: video.title else video.title,
+            title = if (settings.useEpisodes) {
+                ep?.title?.takeUnless { isGeneratedTmdbEpisodeTitle(it, video.episode) } ?: video.title
+            } else {
+                video.title
+            },
             overview = if (settings.useEpisodes) ep?.overview ?: video.overview else video.overview,
             released = selectEpisodeReleaseValue(
                 addonReleased = video.released,
