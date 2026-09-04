@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Folder
@@ -111,6 +112,7 @@ internal enum class SettingsCategory {
     ADVANCED,
     TRACKING,
     LOCAL_LIBRARY,
+    WEBDAV_LIBRARY,
     ABOUT,
     DEBUG
 }
@@ -238,6 +240,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(
+        category = SettingsCategory.WEBDAV_LIBRARY,
+        title = "WebDAV library",
+        icon = Icons.Default.CloudSync,
+        subtitle = "Debrid WebDAV shares",
+        destination = SettingsSectionDestination.External
+    ),
+    SettingsSectionSpec(
         category = SettingsCategory.ABOUT,
         title = stringResource(R.string.about_title),
         icon = Icons.Default.Info,
@@ -271,6 +280,7 @@ fun SettingsScreen(
     onNavigateToSupportersContributors: () -> Unit = {},
     onNavigateToLicensesAttributions: () -> Unit = {},
     onNavigateToLocalLibrary: () -> Unit = {},
+    onNavigateToWebDav: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel()
 ) {
@@ -526,6 +536,7 @@ fun SettingsScreen(
                         SettingsCategory.ACCOUNT -> onNavigateToAuthQrSignIn()
                         SettingsCategory.TRACKING -> onNavigateToTracking()
                         SettingsCategory.LOCAL_LIBRARY -> onNavigateToLocalLibrary()
+                        SettingsCategory.WEBDAV_LIBRARY -> onNavigateToWebDav()
                         else -> Unit
                     }
                 } else {
@@ -1049,6 +1060,7 @@ private fun SettingsDetailPane(
         SettingsCategory.DEBUG -> DebugSettingsContent()
         SettingsCategory.TRACKING -> Unit
         SettingsCategory.LOCAL_LIBRARY -> Unit
+        SettingsCategory.WEBDAV_LIBRARY -> Unit
     }
 }
 

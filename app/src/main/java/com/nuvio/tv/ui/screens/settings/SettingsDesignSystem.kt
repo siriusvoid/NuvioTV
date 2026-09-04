@@ -34,6 +34,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
@@ -56,15 +59,22 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,10 +85,12 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Card
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
@@ -1195,6 +1207,141 @@ internal fun SettingsDialogActionButton(
     }
 }
 
+/**
+ * Inline click-to-edit text input for TV.
+ *
+ * A focusable TV [Surface] always wraps a permanently-mounted [BasicTextField].
+ * During D-pad navigation the Surface owns focus, so the IME stays closed;
+ * pressing select fires `Surface.onClick`, which flips [editing] true and a
+ * `LaunchedEffect` then focuses the inner field and shows the keyboard. Losing
+ * focus or pressing Done flips it back and the system hides the IME.
+ *
+ * Why it is built this way: TV `Card.onClick` does not cleanly hand focus to an
+ * inner BasicTextField, and rendering the field only while editing means the
+ * focusRequester is not laid out when `requestFocus()` runs.
+ */
+@Composable
+internal fun SettingsTextRow(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    isPassword: Boolean = false,
+    enabled: Boolean = true,
+    placeholder: String = "Tap to edit",
+    keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+) {
+    var editing by remember { mutableStateOf(false) }
+    val surfaceFocusRequester = remember { FocusRequester() }
+    val fieldFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val fieldShape = RoundedCornerShape(10.dp)
+    val contentAlpha = if (enabled) 1f else 0.4f
+
+    LaunchedEffect(editing) {
+        if (editing) {
+            fieldFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth().alpha(contentAlpha),
+        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = NuvioTheme.colors.TextSecondary
+        )
+        Surface(
+            onClick = { if (enabled) editing = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(surfaceFocusRequester)
+                .focusProperties { canFocus = enabled },
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = NuvioTheme.colors.BackgroundElevated,
+                focusedContainerColor = NuvioTheme.colors.BackgroundElevated
+            ),
+            border = ClickableSurfaceDefaults.border(
+                border = Border(
+                    border = BorderStroke(NuvioTheme.spacing.hairline, NuvioTheme.colors.Border),
+                    shape = fieldShape
+                ),
+                focusedBorder = Border(
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.xxs),
+                    shape = fieldShape
+                )
+            ),
+            shape = ClickableSurfaceDefaults.shape(fieldShape),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f)
+        ) {
+            Box(
+                modifier = Modifier.padding(
+                    horizontal = 14.dp,
+                    vertical = NuvioTheme.spacing.md
+                )
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    enabled = enabled,
+                    visualTransformation = if (isPassword) {
+                        PasswordVisualTransformation()
+                    } else {
+                        VisualTransformation.None
+                    },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = NuvioTheme.colors.TextPrimary
+                    ),
+                    cursorBrush = SolidColor(
+                        if (editing) NuvioTheme.colors.Primary else Color.Transparent
+                    ),
+                    keyboardOptions = keyboardOptions,
+                    keyboardActions = KeyboardActions(onDone = {
+                        editing = false
+                        keyboardController?.hide()
+                        surfaceFocusRequester.requestFocus()
+                    }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(fieldFocusRequester)
+                        .onFocusChanged { state ->
+                            if (!state.isFocused && editing) {
+                                editing = false
+                                keyboardController?.hide()
+                            }
+                        },
+                    decorationBox = { inner ->
+                        if (value.isEmpty()) {
+                            Text(
+                                text = placeholder,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = NuvioTheme.colors.TextTertiary
+                            )
+                        }
+                        inner()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Credentials, URLs and paths are case-sensitive, and left to its defaults the
+ * IME capitalises the first letter and autocorrects, which silently turns a valid
+ * username into a rejected one.
+ */
+internal val SettingsVerbatimKeyboard = KeyboardOptions(
+    capitalization = KeyboardCapitalization.None,
+    autoCorrectEnabled = false,
+    keyboardType = KeyboardType.Ascii,
+    imeAction = ImeAction.Done
+)
+
 @Composable
 internal fun SettingsChoiceChip(
     label: String,
@@ -1314,4 +1461,86 @@ internal fun rememberRawSvgPainter(
             .build()
     }
     return rememberAsyncImagePainter(model = request)
+}
+
+/**
+ * [SettingsChoiceChip] with its two fills traded places, and nothing else
+ * changed.
+ *
+ * The shared chip gives a resting selection the strong fill and whatever the
+ * cursor is on the weak one, so stepping onto the selected chip makes it dimmer
+ * and the cursor is the faintest thing in the row. Swapping them puts the strong
+ * fill under the cursor; the outline goes on meaning selected, as before.
+ */
+@Composable
+internal fun SettingsToggleChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(NuvioTheme.radii.full)
+    val flat = isFlatSettingsStyle()
+    val selectedBorder = Border(
+        border = BorderStroke(
+            NuvioTheme.spacing.hairline,
+            NuvioTheme.colors.Secondary.copy(alpha = 0.6f)
+        ),
+        shape = shape
+    )
+
+    Card(
+        onClick = onClick,
+        modifier = modifier.onFocusChanged { state -> isFocused = state.isFocused },
+        colors = CardDefaults.colors(
+            // Cursor away: selected rests on the weak fill, unselected on none.
+            containerColor = when {
+                flat && selected -> settingsFocusFillColor()
+                flat -> Color.Transparent
+                selected -> NuvioTheme.colors.FocusRing.copy(alpha = 0.2f)
+                else -> NuvioTheme.colors.Background
+            },
+            // Cursor here: the strong fill, selected or not. The outline is what
+            // still says which one is picked.
+            focusedContainerColor = when {
+                flat -> NuvioTheme.colors.Secondary.copy(alpha = 0.18f)
+                selected -> NuvioTheme.colors.FocusRing.copy(alpha = 0.2f)
+                else -> NuvioTheme.colors.Background
+            }
+        ),
+        border = if (flat) {
+            CardDefaults.border(
+                border = if (selected) selectedBorder else Border.None,
+                focusedBorder = if (selected) selectedBorder else Border.None
+            )
+        } else {
+            CardDefaults.border(
+                border = if (selected) Border(
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
+                    shape = shape
+                ) else Border.None,
+                focusedBorder = Border(
+                    border = NuvioTheme.focusRing.border(NuvioTheme.spacing.hairline),
+                    shape = shape
+                )
+            )
+        },
+        shape = CardDefaults.shape(shape),
+        scale = CardDefaults.scale(focusedScale = 1f, pressedScale = 1f)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected || isFocused) {
+                NuvioTheme.colors.TextPrimary
+            } else {
+                NuvioTheme.colors.TextSecondary
+            },
+            modifier = Modifier.padding(
+                horizontal = NuvioTheme.spacing.lg,
+                vertical = 10.dp
+            )
+        )
+    }
 }
