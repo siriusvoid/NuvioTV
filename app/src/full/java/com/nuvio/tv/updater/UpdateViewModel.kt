@@ -85,7 +85,11 @@ class UpdateViewModel @Inject constructor(
 
             result
                 .onSuccess { update ->
-                    val remoteNewer = VersionUtils.isRemoteNewer(update.tag, BuildConfig.VERSION_NAME)
+                    val remoteNewer = VersionUtils.isRemoteNewer(
+                        update.tag,
+                        BuildConfig.VERSION_NAME,
+                        BuildConfig.RELEASE_BUILD_NUMBER.toLong()
+                    )
                     val shouldShow = UpdateBannerPolicy.shouldShow(
                         isRemoteNewer = remoteNewer,
                         force = force,
