@@ -324,6 +324,12 @@ fun HeroContentSection(
     }
 }
 
+/**
+ * The default 1.1 grows the ~187dp play button by ~9dp a side, all but closing the 12dp gap to the
+ * icon next to it. Half the growth still reads as focus, and every button in the row uses it.
+ */
+private const val HERO_ACTION_FOCUSED_SCALE = 1.05f
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun PlayButton(
@@ -403,6 +409,7 @@ private fun PlayButton(
             contentColor = androidx.compose.ui.graphics.Color.Black,
             focusedContentColor = androidx.compose.ui.graphics.Color.Black
         ),
+        scale = ButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         shape = ButtonDefaults.shape(
             shape = RoundedCornerShape(NuvioTheme.spacing.xxl)
         ),
@@ -461,6 +468,7 @@ private fun ActionIconButtonPainter(
                 if (state.isFocused) onFocused()
             }
             .focusProperties { up = FocusRequester.Cancel },
+        scale = IconButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         colors = IconButtonDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
@@ -546,6 +554,7 @@ private fun ActionIconButton(
                 false
             }
             .focusProperties { up = FocusRequester.Cancel },
+        scale = IconButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         colors = IconButtonDefaults.colors(
             containerColor = if (selected) selectedContainerColor else NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
