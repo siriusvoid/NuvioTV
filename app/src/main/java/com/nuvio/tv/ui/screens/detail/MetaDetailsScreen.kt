@@ -1480,7 +1480,7 @@ private fun MetaDetailsContent(
         byEpisodeId.keys.retainAll(episodesForSeason.map { it.id }.toSet())
         byEpisodeId
     }
-    val seasonDownFocusRequester = remember(selectedSeason, episodesForSeason, seasonEpisodeFocusRequesters, lastFocusedEpisodeIdBySeason[selectedSeason], nextToWatch, defaultSeriesVideo, pendingRestoreType, pendingRestoreEpisodeId) {
+    val seasonDownEpisodeId = remember(selectedSeason, episodesForSeason, lastFocusedEpisodeIdBySeason[selectedSeason], nextToWatch, defaultSeriesVideo, pendingRestoreType, pendingRestoreEpisodeId) {
         val nextEpisodeId = if (pendingRestoreType == RestoreTarget.EPISODE) {
             null
         } else {
@@ -1490,14 +1490,18 @@ private fun MetaDetailsContent(
         }
         val preferredEpisodeId = lastFocusedEpisodeIdBySeason[selectedSeason]
             ?: nextEpisodeId?.takeIf { episodesForSeason.any { ep -> ep.id == it } }
-        (preferredEpisodeId?.let { seasonEpisodeFocusRequesters[it] })
-            ?: episodesForSeason.firstOrNull()?.id?.let { seasonEpisodeFocusRequesters[it] }
+        preferredEpisodeId?.takeIf { id -> episodesForSeason.any { it.id == id } }
+            ?: episodesForSeason.firstOrNull()?.id
+    }
+
+    val seasonDownFocusRequester = remember(seasonDownEpisodeId, seasonEpisodeFocusRequesters) {
+        seasonDownEpisodeId?.let { seasonEpisodeFocusRequesters[it] }
     }
 
     // A plain focusProperties down = <episode card> cannot work from the hero: the episodes row is
-    // usually not composed yet, so the requester has no target and focus does not move. Scrolling
-    // to the row composes it without borrowing anyone's focus on the way; requestFocusAfterFrames
-    // then retries until the card is attached. Item order is fixed: hero, season tabs, episodes.
+    // usually not composed yet, so the requester has no target and focus does not move. The skip
+    // below hands the job to the same restore path the player return uses. Item order is fixed:
+    // hero, season tabs, episodes.
     val showSeasonTabs = isSeries && seasons.isNotEmpty() &&
         !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
     val showEpisodesRow = isSeries && seasons.isNotEmpty()
@@ -1505,11 +1509,19 @@ private fun MetaDetailsContent(
     val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
         val episodesItemIndex = if (showSeasonTabs) 2 else 1
         {
-            coroutineScope.launch {
-                listState.animateScrollToItem(episodesItemIndex)
-                seasonDownFocusRequester?.requestFocusAfterFrames(frames = 2)
+            val episodeId = seasonDownEpisodeId
+            if (episodeId == null) {
+                false
+            } else {
+                // Marking the restore suppresses the focus-driven relocation, so the scroll below
+                // is the only one that runs. Scrolling and requesting focus separately meant two.
+                markEpisodeRestore(episodeId, restoreOnResume = false)
+                restoreFocusToken += 1
+                // Animated: the restore marking suppresses the focus-driven relocation, so this is
+                // the only scroll running and nothing fights the animation.
+                coroutineScope.launch { listState.animateScrollToItem(episodesItemIndex) }
+                true
             }
-            true
         }
     } else {
         null
