@@ -493,6 +493,7 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
 
 /** Requests the combination the detail screen asks for, so it opens on a cache hit. */
 private fun HomeViewModel.warmFullTmdbEnrichment(item: MetaPreview) {
+    if (!fullTmdbWarmedIds.add(item.id)) return
     val tmdbEnabledForCurrentLayout = currentTmdbSettings.enabled &&
         (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
     if (!tmdbEnabledForCurrentLayout) return
@@ -583,6 +584,17 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             }
         }
 
+        // Before the enrichment await: the detail screen blocks on this meta, which needs none of it.
+        if (item.id !in backgroundMetaPrefetchedIds) {
+            backgroundMetaPrefetchedIds.add(item.id)
+            viewModelScope.launch {
+                metaRepository.getMetaFromAllAddons(
+                    type = item.apiType,
+                    id = item.id
+                ).first { it !is NetworkResult.Loading }
+            }
+        }
+
         try {
             // Launch TMDB and external meta addon fetch in parallel.
             // Which sources are used depends on settings:
@@ -645,17 +657,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 addEnrichedPreview(item.id, findCatalogItemById(item.id) ?: item)
             }
 
-            // Always prefetch full meta in background for instant detail screen loading.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-                warmFullTmdbEnrichment(item)
-            }
+            warmFullTmdbEnrichment(item)
 
             // Warm up watch progress pipeline so detail screen reads are fast.
             viewModelScope.launch {
