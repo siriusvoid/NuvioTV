@@ -322,8 +322,20 @@ fun EpisodesRow(
             targetIndex.coerceAtLeast(0)
         }
     }
+    // The restore path skips the initial scroll the normal path gets, so the row is born already
+    // at the resting place instead of arriving there in view: one card back, offset by the rest of
+    // it, which is the same framing scrollToEpisodeId produces.
+    val initialEpisodeScrollOffset = remember(dedupedEpisodes, restoreEpisodeId, cardMetrics, density) {
+        val targetIndex = restoreEpisodeId?.let { id -> dedupedEpisodes.indexOfFirst { it.id == id } } ?: -1
+        if (targetIndex < 1) {
+            0
+        } else {
+            with(density) { (cardMetrics.cardWidth / 3f + cardMetrics.itemSpacing * 2).roundToPx() }
+        }
+    }
     val lazyListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialEpisodeIndex,
+        initialFirstVisibleItemScrollOffset = initialEpisodeScrollOffset,
         prefetchStrategy = rowPrefetchStrategy
     )
     var lastHorizontalKeyRepeatTime by remember { mutableStateOf(0L) }
