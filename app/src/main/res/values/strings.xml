@@ -1030,6 +1030,8 @@
     <string name="layout_show_full_release_date_sub">For movies, show full release date instead of year only.</string>
     <string name="layout_hide_parental_rating">Hide parental rating</string>
     <string name="layout_hide_parental_rating_sub">Hide the parental/age rating badge on the home and detail screens.</string>
+    <string name="layout_skip_seasons_going_down">Skip seasons going down</string>
+    <string name="layout_skip_seasons_going_down_sub">Down from the hero goes straight to the episodes, with the season row still reachable by pressing up.</string>
     <string name="layout_hide_genres">Hide genres</string>
     <string name="layout_hide_genres_sub">Hide genre labels on the home hero and detail screens.</string>
     <string name="layout_hide_extra_metadata">Hide extra metadata</string>

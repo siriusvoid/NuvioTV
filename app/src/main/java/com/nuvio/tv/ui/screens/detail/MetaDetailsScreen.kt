@@ -667,6 +667,7 @@ fun MetaDetailsScreen(
                     detailImdbRatingsVisibility = uiState.detailImdbRatingsVisibility,
                     hideParentalRating = uiState.hideParentalRating,
                     hideGenres = uiState.hideGenres,
+                    skipSeasonsGoingDown = uiState.skipSeasonsGoingDown,
                     hideExtraMetadata = uiState.hideExtraMetadata,
                     hideActorNames = uiState.hideActorNames,
                     isMovieWatched = uiState.isMovieWatched,
@@ -982,6 +983,7 @@ private fun MetaDetailsContent(
     detailImdbRatingsVisibility: DetailImdbRatingsVisibility,
     hideParentalRating: Boolean,
     hideGenres: Boolean,
+    skipSeasonsGoingDown: Boolean,
     hideExtraMetadata: Boolean,
     hideActorNames: Boolean,
     isMovieWatched: Boolean,
@@ -1817,6 +1819,10 @@ private fun MetaDetailsContent(
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
                         playButtonFocusRequester = heroPlayFocusRequester,
+                        // seasonDownFocusRequester already resolves to the right card: next to
+                        // watch, last focused, or the first of the season.
+                        skipToEpisodesFocusRequester = seasonDownFocusRequester
+                            .takeIf { skipSeasonsGoingDown },
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
                                 coroutineScope.launch {

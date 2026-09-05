@@ -630,6 +630,18 @@ fun LayoutSettingsContent(
                     )
 
                     CompactToggleRow(
+                        title = stringResource(R.string.layout_skip_seasons_going_down),
+                        subtitle = stringResource(R.string.layout_skip_seasons_going_down_sub),
+                        checked = uiState.skipSeasonsGoingDown,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetSkipSeasonsGoingDown(!uiState.skipSeasonsGoingDown)
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    CompactToggleRow(
                         title = stringResource(R.string.layout_hide_extra_metadata),
                         subtitle = stringResource(R.string.layout_hide_extra_metadata_sub),
                         checked = uiState.hideExtraMetadata,
