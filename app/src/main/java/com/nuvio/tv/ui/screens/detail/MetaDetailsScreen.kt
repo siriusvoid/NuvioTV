@@ -1562,10 +1562,19 @@ private fun MetaDetailsContent(
         } else {
             castTabFocusRequester
         }
+    // With a single section there are no tabs to aim at, and leaving this null let the focus
+    // search pick whichever card sat under the episode. Naming the row instead lands on its first
+    // item, and on the one last used after that.
     val episodesDownFocusRequester = when {
         hasVisiblePeopleTabs -> activePeopleTabFocusRequester
-        activePeopleTab == PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
-        else -> null
+        !hasVisiblePeopleSection -> null
+        else -> when (visiblePeopleTabItems.first().tab) {
+            PeopleSectionTab.CAST -> castSectionFocusRequester
+            PeopleSectionTab.MORE_LIKE_THIS -> moreLikeSectionFocusRequester
+            PeopleSectionTab.TRAILER -> trailerSectionFocusRequester
+            PeopleSectionTab.COLLECTION -> collectionSectionFocusRequester
+            PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
+        }
     }
     val commentsUpFocusRequester = when {
         shouldSplitCollection && collection.isNotEmpty() -> collectionSectionFocusRequester
