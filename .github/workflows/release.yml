@@ -121,9 +121,10 @@ jobs:
 
             git fetch --tags --force --depth=200 origin >/dev/null 2>&1 || true
             git fetch --no-tags --depth=200 origin +refs/heads/dev:refs/remotes/origin/dev >/dev/null 2>&1 || true
+            # Excluded against upstream only. Excluding the previous release tag as well used to
+            # be a no-op, because tags landed on dev's head; now they land on the built commit, so
+            # it would trim the notes to a single push. It is also the half a rebase orphans.
             EXCLUDES=""
-            PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
-            [ -n "$PREV" ] && EXCLUDES="$EXCLUDES ^$PREV"
             git rev-parse --verify -q origin/dev >/dev/null 2>&1 && EXCLUDES="$EXCLUDES ^origin/dev"
             FORK_CHANGES=""
             if [ -n "$EXCLUDES" ]; then
@@ -143,7 +144,11 @@ jobs:
               NOTES="In-app update build — versionName ${VERSION_NAME} (versionCode ${VERSION_CODE})."
             fi
           fi
-          ARGS=(release create "$RELEASE_TAG" --title "NuvioTV ${RELEASE_TAG}" --notes "$NOTES")
+          # --target pins the tag to the commit this run built. Without it gh tags the
+          # repository's default branch, so every release pointed at dev's head while the
+          # APKs came from test/main, and the tag said nothing about what shipped.
+          ARGS=(release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+            --title "NuvioTV ${RELEASE_TAG}" --notes "$NOTES")
           if [ "$PRERELEASE" = "true" ]; then
             ARGS+=(--prerelease)
           fi
@@ -163,8 +168,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           KEEP: 1
         run: |
-          gh release list --limit 200 --json tagName,createdAt \
-            --jq "sort_by(.createdAt) | reverse | .[${KEEP}:] | .[].tagName" > stale-tags.txt
+          # publishedAt, not createdAt: for a release the latter is the target commit's date, so a
+          # tag on an older commit — which a cherry-pick or rebase produces — sorted as stale and
+          # the run deleted the release it had just made.
+          gh release list --limit 200 --json tagName,publishedAt \
+            --jq "sort_by(.publishedAt) | reverse | .[${KEEP}:] | .[].tagName" > stale-tags.txt
           if [ ! -s stale-tags.txt ]; then
             echo "Nothing to prune."
             exit 0
