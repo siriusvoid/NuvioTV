@@ -1502,6 +1502,7 @@ private fun MetaDetailsContent(
     // usually not composed yet, so the requester has no target and focus does not move. The skip
     // below hands the job to the same restore path the player return uses. Item order is fixed:
     // hero, season tabs, episodes.
+    var seasonTabsFocused by remember { mutableStateOf(false) }
     val showSeasonTabs = isSeries && seasons.isNotEmpty() &&
         !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
     val showEpisodesRow = isSeries && seasons.isNotEmpty()
@@ -1879,7 +1880,11 @@ private fun MetaDetailsContent(
             // Season tabs and episodes for series
             if (showSeasonTabs) {
                 item(key = "season_tabs", contentType = "season_tabs") {
-                    Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {
+                    Box(
+                        modifier = Modifier
+                            .bringIntoViewResponder(detailRowBringIntoViewResponder)
+                            .onFocusChanged { seasonTabsFocused = it.hasFocus }
+                    ) {
                         SeasonTabs(
                             seasons = seasons,
                             selectedSeason = selectedSeason,
@@ -1959,7 +1964,7 @@ private fun MetaDetailsContent(
         }
 
         // Cast / More like this section
-        if (hasVisiblePeopleSection) {
+        if (hasVisiblePeopleSection && !seasonTabsFocused) {
                 if (hasVisiblePeopleTabs) {
                     item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
                         PeopleSectionTabs(
