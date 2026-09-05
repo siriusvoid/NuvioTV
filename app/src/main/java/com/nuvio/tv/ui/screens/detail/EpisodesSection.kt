@@ -9,6 +9,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -108,6 +112,9 @@ private const val EPISODE_RESTORE_FALLBACK_MS = 250L
 
 /** A row that never reports a layout must not hold the restore open. */
 private const val EPISODE_ROW_LAYOUT_WAIT_MS = 120L
+
+/** Long enough to cover the settle that follows focus, short enough not to eat a left/right press. */
+private const val EPISODE_ROW_HOLD_MS = 80L
 private const val EPISODE_OVERLAY_PREFETCH_DELAY_MS = 120L
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -337,11 +344,50 @@ fun EpisodesRow(
         episodeFocusRequesters.keys.retainAll(episodeIds)
     }
 
+    // Held still means the row refuses to scroll: the rect handed to the parent is empty, so the
+    // list has nothing to bring into view. Read live rather than through a key, because focus asks
+    // for this in the same dispatch that sets it.
+    val holdRowStill = remember { mutableStateOf(false) }
+    val rowHasFocus = remember { mutableStateOf(false) }
+    val cardRelocationResponder = remember {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect =
+                if (holdRowStill.value) Rect.Zero else localRect
+
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) { }
+        }
+    }
+
     fun isCardFullyVisible(index: Int): Boolean {
         val layout = lazyListState.layoutInfo
         val card = layout.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
         return card.offset >= 0 &&
             card.offset + card.size <= layout.viewportEndOffset - layout.afterContentPadding
+    }
+
+    // Focus entering the row settles it against the platform's own pivot, which moves a card that
+    // was already fully on screen. Nothing needs to move in that case, so nothing is allowed to.
+    val currentEpisodes by rememberUpdatedState(dedupedEpisodes)
+    val currentOnEpisodeFocused by rememberUpdatedState(onEpisodeFocused)
+    val onCardFocused: (String) -> Unit = remember {
+        { episodeId ->
+            if (!rowHasFocus.value) {
+                val index = currentEpisodes.indexOfFirst { it.id == episodeId }
+                val layout = lazyListState.layoutInfo
+                val card = layout.visibleItemsInfo.firstOrNull { it.index == index }
+                holdRowStill.value = card != null &&
+                    card.offset >= 0 &&
+                    card.offset + card.size <= layout.viewportEndOffset - layout.afterContentPadding
+            }
+            currentOnEpisodeFocused(episodeId)
+        }
+    }
+
+    LaunchedEffect(holdRowStill.value) {
+        if (holdRowStill.value) {
+            delay(EPISODE_ROW_HOLD_MS)
+            holdRowStill.value = false
+        }
     }
 
     LaunchedEffect(restoreFocusToken, restoreEpisodeId, restoreTargetRequester, dedupedEpisodes) {
@@ -360,19 +406,26 @@ fun EpisodesRow(
                     snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
                 }
             }
-            // Only scroll when the card is off-screen, which is the only reason focus would fail.
-            if (!isCardFullyVisible(index)) {
+            if (isCardFullyVisible(index)) {
+                // The card is where the user left it, so nothing needs to move — and the row is
+                // held still, because gaining focus otherwise settles it against its own pivot.
+                holdRowStill.value = true
+            } else {
                 val offsetPx = with(density) { (cardMetrics.cardWidth * 2f / 3f - cardMetrics.itemSpacing).roundToPx() }
                 lazyListState.scrollToItem(index, scrollOffset = -offsetPx)
             }
         }
-        val focusRequested = restoreTargetRequester?.requestFocusAfterFrames(frames = 1) == true
-        if (!focusRequested) {
+        try {
+            val focusRequested = restoreTargetRequester?.requestFocusAfterFrames(frames = 1) == true
+            if (!focusRequested) {
+                onRestoreFocusHandled()
+                return@LaunchedEffect
+            }
+            delay(EPISODE_RESTORE_FALLBACK_MS)
             onRestoreFocusHandled()
-            return@LaunchedEffect
+        } finally {
+            holdRowStill.value = false
         }
-        delay(EPISODE_RESTORE_FALLBACK_MS)
-        onRestoreFocusHandled()
     }
 
     LaunchedEffect(scrollToEpisodeId, dedupedEpisodes) {
@@ -387,6 +440,7 @@ fun EpisodesRow(
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { rowHasFocus.value = it.hasFocus }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
                 val isHorizontalKey = native.keyCode == AndroidKeyEvent.KEYCODE_DPAD_LEFT ||
@@ -423,28 +477,30 @@ fun EpisodesRow(
             val episodeFocusRequester = remember(episode.id) { episodeFocusRequesters.getOrPut(episode.id) { FocusRequester() } }
             val episodeOnClick = remember(episode.id) { { onEpisodeClick(episode) } }
             val episodeOnLongPress = remember(episode.id) { { optionsEpisode = episode } }
-            val episodeOnFocused = remember(episode.id) { { onEpisodeFocused(episode.id) } }
+            val episodeOnFocused = remember(episode.id, onCardFocused) { { onCardFocused(episode.id) } }
             val isRestoreTarget = episode.id == restoreEpisodeId
             val episodeOnFocusRestored = remember(isRestoreTarget, onRestoreFocusHandled) {
                 if (isRestoreTarget) onRestoreFocusHandled else null
             }
-            EpisodeCard(
-                episode = episode,
-                watchProgress = progress,
-                imdbRating = imdbRating,
-                isMarkedWatched = isMarkedWatched,
-                blurUnwatched = blurUnwatchedEpisodes,
-                suppressMarquee = isOverlayOpen,
-                cardMetrics = cardMetrics,
-                onClick = episodeOnClick,
-                onLongPress = episodeOnLongPress,
-                upFocusRequester = upFocusRequester,
-                downFocusRequester = downFocusRequester,
-                focusRequester = episodeFocusRequester,
-                isFocusEnabled = restoreEpisodeId.isNullOrBlank() || isRestoreTarget,
-                onFocused = episodeOnFocused,
-                onFocusRestored = episodeOnFocusRestored
-            )
+            Box(modifier = Modifier.bringIntoViewResponder(cardRelocationResponder)) {
+                EpisodeCard(
+                    episode = episode,
+                    watchProgress = progress,
+                    imdbRating = imdbRating,
+                    isMarkedWatched = isMarkedWatched,
+                    blurUnwatched = blurUnwatchedEpisodes,
+                    suppressMarquee = isOverlayOpen,
+                    cardMetrics = cardMetrics,
+                    onClick = episodeOnClick,
+                    onLongPress = episodeOnLongPress,
+                    upFocusRequester = upFocusRequester,
+                    downFocusRequester = downFocusRequester,
+                    focusRequester = episodeFocusRequester,
+                    isFocusEnabled = restoreEpisodeId.isNullOrBlank() || isRestoreTarget,
+                    onFocused = episodeOnFocused,
+                    onFocusRestored = episodeOnFocusRestored
+                )
+            }
         }
     }
 
