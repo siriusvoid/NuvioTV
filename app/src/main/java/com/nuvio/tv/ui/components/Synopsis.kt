@@ -11,6 +11,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +27,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -46,7 +46,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -73,17 +75,34 @@ fun SynopsisDescription(
     onTruncationChanged: (Boolean) -> Unit = {}
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    var isTruncated by rememberSaveable(description, maxLines) { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val highlightInset = 12.dp
+    val textMeasurer = rememberTextMeasurer()
+    val textStyle = MaterialTheme.typography.bodyMedium
 
-    LaunchedEffect(isTruncated) {
-        onTruncationChanged(isTruncated)
-    }
+    BoxWithConstraints(modifier = modifier) {
+        val availableWidthPx = constraints.maxWidth
 
-    Column(
-        modifier = modifier.then(
-            if (isTruncated) {
+        // Measured up front rather than read back from onTextLayout, which only reports after the
+        // first draw: the correction landed a frame late and the hero's animateContentSize slid
+        // into it. Measuring at the full width holds even though the truncated branch then adds
+        // padding, because narrower text can only overflow more, never less.
+        val isTruncated = remember(description, maxLines, availableWidthPx, textStyle) {
+            textMeasurer.measure(
+                text = description,
+                style = textStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = maxLines,
+                constraints = Constraints(maxWidth = availableWidthPx)
+            ).hasVisualOverflow
+        }
+
+        LaunchedEffect(isTruncated) {
+            onTruncationChanged(isTruncated)
+        }
+
+        Column(
+            modifier = if (isTruncated) {
                 Modifier
                     .offset(x = -highlightInset)
                     .then(
@@ -124,31 +143,26 @@ fun SynopsisDescription(
             } else {
                 Modifier
             }
-        )
-    ) {
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = NuvioTheme.colors.TextPrimary,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { result ->
-                if (result.hasVisualOverflow != isTruncated) {
-                    isTruncated = result.hasVisualOverflow
-                }
-            }
-        )
-        if (isTruncated) {
+        ) {
             Text(
-                text = stringResource(R.string.hero_synopsis_read_more),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (isFocused) {
-                    NuvioTheme.colors.TextPrimary
-                } else {
-                    NuvioTheme.extendedColors.textSecondary
-                },
-                modifier = Modifier.padding(top = 4.dp)
+                text = description,
+                style = textStyle,
+                color = NuvioTheme.colors.TextPrimary,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
             )
+            if (isTruncated) {
+                Text(
+                    text = stringResource(R.string.hero_synopsis_read_more),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isFocused) {
+                        NuvioTheme.colors.TextPrimary
+                    } else {
+                        NuvioTheme.extendedColors.textSecondary
+                    },
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }
