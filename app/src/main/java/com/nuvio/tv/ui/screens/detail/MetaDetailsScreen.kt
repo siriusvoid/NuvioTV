@@ -1144,7 +1144,10 @@ private fun MetaDetailsContent(
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
-    val suppressDetailRowRelocation = pendingRestoreType == RestoreTarget.EPISODE
+    // The skip borrows the player-return restore, but not its stillness: a return restores a
+    // position, while the skip is moving to one and has to be allowed to settle at the end.
+    var skipRestoreActive by remember { mutableStateOf(false) }
+    val suppressDetailRowRelocation = pendingRestoreType == RestoreTarget.EPISODE && !skipRestoreActive
     val detailRowBringIntoViewResponder = remember(suppressDetailRowRelocation) {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect {
@@ -1157,6 +1160,7 @@ private fun MetaDetailsContent(
 
     fun clearPendingRestore() {
         val shouldConsumeReturnFocus = consumeReturnEpisodeFocusOnClear
+        skipRestoreActive = false
         pendingRestoreType = null
         pendingRestoreEpisodeId = null
         pendingRestoreCastPersonId = null
@@ -1536,6 +1540,7 @@ private fun MetaDetailsContent(
                 skipToEpisodesInFlight -> true
                 else -> {
                     skipToEpisodesInFlight = true
+                    skipRestoreActive = true
                     // Marking the restore suppresses the focus-driven relocation, so the scroll
                     // below is the only one that runs. Scrolling and requesting focus separately
                     // meant two.
