@@ -4,6 +4,8 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -27,6 +29,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -102,6 +105,9 @@ import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 private const val EPISODE_CARD_CONTENT_TYPE = "episode_card"
 private const val EPISODE_SCROLL_REPEAT_THROTTLE_MS = 80L
 private const val EPISODE_RESTORE_FALLBACK_MS = 250L
+
+/** A row that never reports a layout must not hold the restore open. */
+private const val EPISODE_ROW_LAYOUT_WAIT_MS = 120L
 private const val EPISODE_OVERLAY_PREFETCH_DELAY_MS = 120L
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -328,8 +334,20 @@ fun EpisodesRow(
         }
         val index = dedupedEpisodes.indexOfFirst { it.id == restoreEpisodeId }
         if (index >= 0) {
-            val offsetPx = with(density) { (cardMetrics.cardWidth * 2f / 3f - cardMetrics.itemSpacing).roundToPx() }
-            lazyListState.scrollToItem(index, scrollOffset = -offsetPx)
+            // The row may not have been measured yet, and an empty layout would read as "not
+            // visible" and scroll a row that is already in the right place.
+            if (lazyListState.layoutInfo.visibleItemsInfo.isEmpty()) {
+                withTimeoutOrNull(EPISODE_ROW_LAYOUT_WAIT_MS) {
+                    snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+                }
+            }
+            // Only scroll when the card is off-screen, which is the only reason focus would fail.
+            // On TV the focus bring-into-view settles the row on its own pivot, so placing the card
+            // here as well meant it was positioned twice and slid between the two.
+            if (lazyListState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+                val offsetPx = with(density) { (cardMetrics.cardWidth * 2f / 3f - cardMetrics.itemSpacing).roundToPx() }
+                lazyListState.scrollToItem(index, scrollOffset = -offsetPx)
+            }
         }
         val focusRequested = restoreTargetRequester?.requestFocusAfterFrames(frames = 1) == true
         if (!focusRequested) {
