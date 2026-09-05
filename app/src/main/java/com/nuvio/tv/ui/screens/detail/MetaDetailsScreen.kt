@@ -208,6 +208,9 @@ private fun resolveHeroPlaybackVideo(
 
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
 
+/** A held key repeats about every 50ms, which outruns the rows being built. */
+private const val DOWN_REPEAT_THROTTLE_MS = 120L
+
 /** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
 private const val SKIP_TO_EPISODES_SCROLL_MS = 450
 
@@ -1124,6 +1127,7 @@ private fun MetaDetailsContent(
     var pendingRestoreCollectionItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingRestoreCompanyId by rememberSaveable { mutableStateOf<Int?>(null) }
     var restoreFocusToken by rememberSaveable { mutableIntStateOf(0) }
+    var lastDownRepeatMs by remember { mutableLongStateOf(0L) }
     var commentsEntryFocusToken by rememberSaveable { mutableIntStateOf(0) }
     var companyRestoreToken by rememberSaveable { mutableIntStateOf(0) }
     var restoreOnNextResume by rememberSaveable { mutableStateOf(false) }
@@ -1866,6 +1870,22 @@ private fun MetaDetailsContent(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    // Held down, a repeat can land before the row below has been built, and a down
+                    // target that does not exist yet falls back to the nearest card by position.
+                    if (native.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                        native.action == KeyEvent.ACTION_DOWN &&
+                        native.repeatCount > 0
+                    ) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastDownRepeatMs < DOWN_REPEAT_THROTTLE_MS) {
+                            return@onPreviewKeyEvent true
+                        }
+                        lastDownRepeatMs = now
+                    }
+                    false
+                }
                 .recompositionHighlighter(),
             state = listState
         ) {
