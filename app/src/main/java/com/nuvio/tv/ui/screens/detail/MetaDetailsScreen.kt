@@ -6,11 +6,13 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -205,6 +207,9 @@ private fun resolveHeroPlaybackVideo(
 }
 
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
+
+/** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
+private const val SKIP_TO_EPISODES_SCROLL_MS = 380
 
 
 private fun formatDetailYearRange(releaseInfo: String?): String? {
@@ -1508,7 +1513,6 @@ private fun MetaDetailsContent(
     val showEpisodesRow = isSeries && seasons.isNotEmpty()
 
     val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
-        val episodesItemIndex = if (showSeasonTabs) 2 else 1
         {
             val episodeId = seasonDownEpisodeId
             if (episodeId == null) {
@@ -1518,9 +1522,20 @@ private fun MetaDetailsContent(
                 // is the only one that runs. Scrolling and requesting focus separately meant two.
                 markEpisodeRestore(episodeId, restoreOnResume = false)
                 restoreFocusToken += 1
-                // Animated: the restore marking suppresses the focus-driven relocation, so this is
-                // the only scroll running and nothing fights the animation.
-                coroutineScope.launch { listState.animateScrollToItem(episodesItemIndex) }
+                coroutineScope.launch {
+                    val hero = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
+                    if (hero != null) {
+                        // animateScrollToItem teleports when the target is more than a viewport
+                        // away, and the hero is exactly that tall — hence the jump. Scrolling by
+                        // the hero's measured height lands the row below it at the top instead.
+                        listState.animateScrollBy(
+                            (hero.offset + hero.size).toFloat(),
+                            tween(durationMillis = SKIP_TO_EPISODES_SCROLL_MS, easing = FastOutSlowInEasing)
+                        )
+                    } else {
+                        listState.animateScrollToItem(if (showSeasonTabs) 2 else 1)
+                    }
+                }
                 true
             }
         }
