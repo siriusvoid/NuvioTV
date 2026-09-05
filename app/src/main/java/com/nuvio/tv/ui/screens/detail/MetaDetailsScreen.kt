@@ -1964,18 +1964,22 @@ private fun MetaDetailsContent(
         }
 
         // Cast / More like this section
-        if (hasVisiblePeopleSection && !seasonTabsFocused) {
+        if (hasVisiblePeopleSection) {
                 if (hasVisiblePeopleTabs) {
                     item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
-                        PeopleSectionTabs(
-                            activeTab = activePeopleTab,
-                            tabs = visiblePeopleTabItems,
-                            upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
-                            ratingsDownFocusRequester = ratingsContentFocusRequester,
-                            onTabFocused = { tab ->
-                                activePeopleTab = tab
-                            }
-                        )
+                        // Hidden by alpha rather than dropped from the list: removing the items
+                        // shortened the column, so the scroll clamped and jumped back on return.
+                        Box(modifier = Modifier.graphicsLayer { alpha = if (seasonTabsFocused) 0f else 1f }) {
+                            PeopleSectionTabs(
+                                activeTab = activePeopleTab,
+                                tabs = visiblePeopleTabItems,
+                                upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
+                                ratingsDownFocusRequester = ratingsContentFocusRequester,
+                                onTabFocused = { tab ->
+                                    activePeopleTab = tab
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -1992,6 +1996,7 @@ private fun MetaDetailsContent(
 
                     Crossfade(
                         targetState = visiblePeopleSection,
+                        modifier = Modifier.graphicsLayer { alpha = if (seasonTabsFocused) 0f else 1f },
                         animationSpec = tween(durationMillis = 160),
                         label = "peopleSectionSwitch"
                     ) { section ->
