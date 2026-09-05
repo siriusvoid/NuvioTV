@@ -497,6 +497,7 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
  * lookup is a cache hit. Called wherever the detail prefetch is claimed.
  */
 private fun HomeViewModel.warmFullTmdbEnrichment(item: MetaPreview) {
+    if (!fullTmdbWarmedIds.add(item.id)) return
     val tmdbEnabledForCurrentLayout = currentTmdbSettings.enabled &&
         (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
     if (!tmdbEnabledForCurrentLayout) return
@@ -587,6 +588,19 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             }
         }
 
+        // Before the enrichment await, not after: the detail screen blocks on this meta and it
+        // needs nothing the enrichment produces. It also goes to the addon's host, so it does not
+        // queue behind the TMDB calls.
+        if (item.id !in backgroundMetaPrefetchedIds) {
+            backgroundMetaPrefetchedIds.add(item.id)
+            viewModelScope.launch {
+                metaRepository.getMetaFromAllAddons(
+                    type = item.apiType,
+                    id = item.id
+                ).first { it !is NetworkResult.Loading }
+            }
+        }
+
         try {
             // Launch TMDB and external meta addon fetch in parallel.
             // Which sources are used depends on settings:
@@ -649,17 +663,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 addEnrichedPreview(item.id, findCatalogItemById(item.id) ?: item)
             }
 
-            // Always prefetch full meta in background for instant detail screen loading.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-                warmFullTmdbEnrichment(item)
-            }
+            warmFullTmdbEnrichment(item)
 
             // Warm up watch progress pipeline so detail screen reads are fast.
             viewModelScope.launch {
