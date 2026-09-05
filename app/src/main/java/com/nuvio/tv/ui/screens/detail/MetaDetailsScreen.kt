@@ -6,11 +6,14 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -205,6 +208,9 @@ private fun resolveHeroPlaybackVideo(
 }
 
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
+
+/** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
+private const val SKIP_TO_EPISODES_SCROLL_MS = 450
 
 
 private fun formatDetailYearRange(releaseInfo: String?): String? {
@@ -667,6 +673,7 @@ fun MetaDetailsScreen(
                     detailImdbRatingsVisibility = uiState.detailImdbRatingsVisibility,
                     hideParentalRating = uiState.hideParentalRating,
                     hideGenres = uiState.hideGenres,
+                    skipSeasonsGoingDown = uiState.skipSeasonsGoingDown,
                     hideExtraMetadata = uiState.hideExtraMetadata,
                     hideActorNames = uiState.hideActorNames,
                     isMovieWatched = uiState.isMovieWatched,
@@ -982,6 +989,7 @@ private fun MetaDetailsContent(
     detailImdbRatingsVisibility: DetailImdbRatingsVisibility,
     hideParentalRating: Boolean,
     hideGenres: Boolean,
+    skipSeasonsGoingDown: Boolean,
     hideExtraMetadata: Boolean,
     hideActorNames: Boolean,
     isMovieWatched: Boolean,
@@ -1131,7 +1139,9 @@ private fun MetaDetailsContent(
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
-    val suppressDetailRowRelocation = pendingRestoreType == RestoreTarget.EPISODE
+    // The skip borrows the player-return restore but not its stillness, so it can settle at the end.
+    var skipRestoreActive by remember { mutableStateOf(false) }
+    val suppressDetailRowRelocation = pendingRestoreType == RestoreTarget.EPISODE && !skipRestoreActive
     val detailRowBringIntoViewResponder = remember(suppressDetailRowRelocation) {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect {
@@ -1144,6 +1154,7 @@ private fun MetaDetailsContent(
 
     fun clearPendingRestore() {
         val shouldConsumeReturnFocus = consumeReturnEpisodeFocusOnClear
+        skipRestoreActive = false
         pendingRestoreType = null
         pendingRestoreEpisodeId = null
         pendingRestoreCastPersonId = null
@@ -1478,7 +1489,7 @@ private fun MetaDetailsContent(
         byEpisodeId.keys.retainAll(episodesForSeason.map { it.id }.toSet())
         byEpisodeId
     }
-    val seasonDownFocusRequester = remember(selectedSeason, episodesForSeason, seasonEpisodeFocusRequesters, lastFocusedEpisodeIdBySeason[selectedSeason], nextToWatch, defaultSeriesVideo, pendingRestoreType, pendingRestoreEpisodeId) {
+    val seasonDownEpisodeId = remember(selectedSeason, episodesForSeason, lastFocusedEpisodeIdBySeason[selectedSeason], nextToWatch, defaultSeriesVideo, pendingRestoreType, pendingRestoreEpisodeId) {
         val nextEpisodeId = if (pendingRestoreType == RestoreTarget.EPISODE) {
             null
         } else {
@@ -1488,8 +1499,96 @@ private fun MetaDetailsContent(
         }
         val preferredEpisodeId = lastFocusedEpisodeIdBySeason[selectedSeason]
             ?: nextEpisodeId?.takeIf { episodesForSeason.any { ep -> ep.id == it } }
-        (preferredEpisodeId?.let { seasonEpisodeFocusRequesters[it] })
-            ?: episodesForSeason.firstOrNull()?.id?.let { seasonEpisodeFocusRequesters[it] }
+        preferredEpisodeId?.takeIf { id -> episodesForSeason.any { it.id == id } }
+            ?: episodesForSeason.firstOrNull()?.id
+    }
+
+    val seasonDownFocusRequester = remember(seasonDownEpisodeId, seasonEpisodeFocusRequesters) {
+        seasonDownEpisodeId?.let { seasonEpisodeFocusRequesters[it] }
+    }
+
+    val showSeasonTabs = isSeries && seasons.isNotEmpty() &&
+        !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
+    val showEpisodesRow = isSeries && seasons.isNotEmpty()
+
+    // Asks the platform where a focused row rests instead of guessing a viewport fraction.
+    val bringIntoViewSpec = LocalBringIntoViewSpec.current
+    val episodeRowMetrics = rememberEpisodeCardMetrics(posterCardCornerRadiusDp)
+    val episodeCardInsetPx = with(LocalDensity.current) { episodeRowMetrics.rowVerticalPadding.roundToPx() }
+    var skipToEpisodesInFlight by remember { mutableStateOf(false) }
+    // focusProperties down can't reach the unbuilt episodes row, so the skip uses the player-return restore.
+    val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
+        {
+            val episodeId = seasonDownEpisodeId
+            when {
+                episodeId == null -> false
+                // Held keys repeat, and restarting the scroll on each repeat crawls.
+                skipToEpisodesInFlight -> true
+                else -> {
+                    skipToEpisodesInFlight = true
+                    skipRestoreActive = true
+                    // The restore path moves focus to a row that doesn't exist yet: the card requests it once built.
+                    markEpisodeRestore(episodeId, restoreOnResume = false)
+                    coroutineScope.launch {
+                        try {
+                            val hero = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
+                            val episodesItemIndex = if (showSeasonTabs) 2 else 1
+                            if (hero != null) {
+                                // Scroll by the hero's height, then correct the endpoint once the row appears, as one
+                                // animation.
+                                listState.scroll {
+                                    val heroDistance = (hero.offset + hero.size).toFloat()
+                                    var consumed = 0f
+                                    var correctedAt = -1f
+                                    var consumedAtCorrection = 0f
+                                    var remaining = 0f
+                                    animate(
+                                        initialValue = 0f,
+                                        targetValue = 1f,
+                                        animationSpec = tween(
+                                            durationMillis = SKIP_TO_EPISODES_SCROLL_MS,
+                                            easing = FastOutSlowInEasing
+                                        )
+                                    ) { fraction, _ ->
+                                        if (correctedAt < 0f && fraction < 1f) {
+                                            val info = listState.layoutInfo
+                                            val row = info.visibleItemsInfo.firstOrNull { it.index == episodesItemIndex }
+                                            if (row != null) {
+                                                // The request comes from the card, which sits
+                                                // inside the row's own padding.
+                                                remaining = bringIntoViewSpec.calculateScrollDistance(
+                                                    (row.offset + episodeCardInsetPx).toFloat(),
+                                                    (row.size - 2 * episodeCardInsetPx).toFloat(),
+                                                    (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+                                                )
+                                                correctedAt = fraction
+                                                consumedAtCorrection = consumed
+                                            }
+                                        }
+                                        val target = if (correctedAt >= 0f) {
+                                            consumedAtCorrection +
+                                                remaining * ((fraction - correctedAt) / (1f - correctedAt))
+                                        } else {
+                                            heroDistance * fraction
+                                        }
+                                        consumed += scrollBy(target - consumed)
+                                    }
+                                }
+                            } else {
+                                listState.animateScrollToItem(episodesItemIndex)
+                            }
+                            // Focus lands once the page has stopped, so it triggers no settle.
+                            restoreFocusToken += 1
+                        } finally {
+                            skipToEpisodesInFlight = false
+                        }
+                    }
+                    true
+                }
+            }
+        }
+    } else {
+        null
     }
 
     val activePeopleTabFocusRequester = visiblePeopleTabItems
@@ -1817,6 +1916,7 @@ private fun MetaDetailsContent(
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
                         playButtonFocusRequester = heroPlayFocusRequester,
+                        onSkipDownToEpisodes = skipDownToEpisodes,
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
                                 coroutineScope.launch {
@@ -1841,8 +1941,6 @@ private fun MetaDetailsContent(
             }
 
             // Season tabs and episodes for series
-            val showSeasonTabs = isSeries && seasons.isNotEmpty() && !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
-            val showEpisodesRow = isSeries && seasons.isNotEmpty()
             if (showSeasonTabs) {
                 item(key = "season_tabs", contentType = "season_tabs") {
                     Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {

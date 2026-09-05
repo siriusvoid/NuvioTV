@@ -4,6 +4,8 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -19,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -27,6 +31,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -102,6 +107,9 @@ import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
 private const val EPISODE_CARD_CONTENT_TYPE = "episode_card"
 private const val EPISODE_SCROLL_REPEAT_THROTTLE_MS = 80L
 private const val EPISODE_RESTORE_FALLBACK_MS = 250L
+
+/** A row that never reports a layout must not hold the restore open. */
+private const val EPISODE_ROW_LAYOUT_WAIT_MS = 120L
 private const val EPISODE_OVERLAY_PREFETCH_DELAY_MS = 120L
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
@@ -309,14 +317,55 @@ fun EpisodesRow(
             targetIndex.coerceAtLeast(0)
         }
     }
+    // The restore path skips the initial scroll, so the row starts where scrollToEpisodeId would put it.
+    val initialEpisodeScrollOffset = remember(dedupedEpisodes, restoreEpisodeId, cardMetrics, density) {
+        val targetIndex = restoreEpisodeId?.let { id -> dedupedEpisodes.indexOfFirst { it.id == id } } ?: -1
+        if (targetIndex < 1) {
+            0
+        } else {
+            with(density) { (cardMetrics.cardWidth / 3f + cardMetrics.itemSpacing * 2).roundToPx() }
+        }
+    }
     val lazyListState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialEpisodeIndex,
+        initialFirstVisibleItemScrollOffset = initialEpisodeScrollOffset,
         prefetchStrategy = rowPrefetchStrategy
     )
     var lastHorizontalKeyRepeatTime by remember { mutableStateOf(0L) }
     val episodeIds = remember(dedupedEpisodes) { dedupedEpisodes.mapTo(mutableSetOf()) { it.id } }
     LaunchedEffect(episodeIds, episodeFocusRequesters) {
         episodeFocusRequesters.keys.retainAll(episodeIds)
+    }
+
+    // Pre-positioned where the platform puts a focused card, so nothing moves when focus lands.
+    val bringIntoViewSpec = LocalBringIntoViewSpec.current
+
+    fun cardAlignmentDelta(index: Int): Float {
+        val layout = lazyListState.layoutInfo
+        val card = layout.visibleItemsInfo.firstOrNull { it.index == index } ?: return 0f
+        // Offsets are measured from the viewport edge, not the content edge; the row padding is the difference.
+        return bringIntoViewSpec.calculateScrollDistance(
+            (card.offset - layout.viewportStartOffset).toFloat(),
+            card.size.toFloat(),
+            (layout.viewportEndOffset - layout.viewportStartOffset).toFloat()
+        )
+    }
+
+    // Runs as soon as the row is built, while it's still below the screen edge on the skip.
+    LaunchedEffect(restoreEpisodeId, dedupedEpisodes) {
+        val targetId = restoreEpisodeId ?: return@LaunchedEffect
+        val index = dedupedEpisodes.indexOfFirst { it.id == targetId }
+        if (index < 0) return@LaunchedEffect
+        if (lazyListState.layoutInfo.visibleItemsInfo.isEmpty()) {
+            withTimeoutOrNull(EPISODE_ROW_LAYOUT_WAIT_MS) {
+                snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+            }
+        }
+        val offsetPx = with(density) { (cardMetrics.cardWidth * 2f / 3f - cardMetrics.itemSpacing).roundToPx() }
+        lazyListState.scrollToItem(index, scrollOffset = -offsetPx)
+        // Then close the gap to the platform's resting place, so focus has nothing left to settle.
+        val delta = cardAlignmentDelta(index)
+        if (delta != 0f) lazyListState.scrollBy(delta)
     }
 
     LaunchedEffect(restoreFocusToken, restoreEpisodeId, restoreTargetRequester, dedupedEpisodes) {
@@ -328,8 +377,12 @@ fun EpisodesRow(
         }
         val index = dedupedEpisodes.indexOfFirst { it.id == restoreEpisodeId }
         if (index >= 0) {
-            val offsetPx = with(density) { (cardMetrics.cardWidth * 2f / 3f - cardMetrics.itemSpacing).roundToPx() }
-            lazyListState.scrollToItem(index, scrollOffset = -offsetPx)
+            // An unmeasured row reads as not visible and would scroll one that's already in place.
+            if (lazyListState.layoutInfo.visibleItemsInfo.isEmpty()) {
+                withTimeoutOrNull(EPISODE_ROW_LAYOUT_WAIT_MS) {
+                    snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+                }
+            }
         }
         val focusRequested = restoreTargetRequester?.requestFocusAfterFrames(frames = 1) == true
         if (!focusRequested) {
@@ -1039,7 +1092,7 @@ fun SeasonOptionsDialog(
     }
 }
 
-private data class EpisodeCardMetrics(
+internal data class EpisodeCardMetrics(
     val rowHorizontalPadding: Dp,
     val rowVerticalPadding: Dp,
     val itemSpacing: Dp,
@@ -1065,7 +1118,7 @@ private data class EpisodeCardMetrics(
 )
 
 @Composable
-private fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): EpisodeCardMetrics {
+internal fun rememberEpisodeCardMetrics(posterCardCornerRadiusDp: Int = 12): EpisodeCardMetrics {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val userCornerRadius = posterCardCornerRadiusDp.dp
     return remember(screenWidthDp, userCornerRadius) {
