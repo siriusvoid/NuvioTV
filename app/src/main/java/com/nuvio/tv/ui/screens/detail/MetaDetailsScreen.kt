@@ -209,7 +209,7 @@ private fun resolveHeroPlaybackVideo(
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
 
 /** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
-private const val SKIP_TO_EPISODES_SCROLL_MS = 380
+private const val SKIP_TO_EPISODES_SCROLL_MS = 450
 
 
 private fun formatDetailYearRange(releaseInfo: String?): String? {
@@ -1521,7 +1521,6 @@ private fun MetaDetailsContent(
                 // Marking the restore suppresses the focus-driven relocation, so the scroll below
                 // is the only one that runs. Scrolling and requesting focus separately meant two.
                 markEpisodeRestore(episodeId, restoreOnResume = false)
-                restoreFocusToken += 1
                 coroutineScope.launch {
                     val hero = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
                     if (hero != null) {
@@ -1535,6 +1534,9 @@ private fun MetaDetailsContent(
                     } else {
                         listState.animateScrollToItem(if (showSeasonTabs) 2 else 1)
                     }
+                    // Focus moves once the scroll is done: doing it up front unpins the hero and
+                    // runs focus traversal in the same frames the animation needs.
+                    restoreFocusToken += 1
                 }
                 true
             }
