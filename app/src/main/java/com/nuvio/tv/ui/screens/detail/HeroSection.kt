@@ -110,7 +110,7 @@ fun HeroContentSection(
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
     /** Set when the season row should be skipped on the way down; null keeps the default order. */
-    skipToEpisodesFocusRequester: FocusRequester? = null,
+    onSkipDownToEpisodes: (() -> Boolean)? = null,
     restorePlayFocusToken: Int = 0,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
@@ -234,8 +234,8 @@ fun HeroContentSection(
                             focusRequester = playButtonFocusRequester,
                             // Only when the description will not take the focus itself; when it
                             // does, it carries the skip.
-                            downFocusRequester = skipToEpisodesFocusRequester
-                                .takeIf { !descriptionTakesFocus },
+                            onDownPressed = onSkipDownToEpisodes
+                                ?.takeIf { !descriptionTakesFocus },
                             restoreFocusToken = restorePlayFocusToken,
                             onFocusRestored = {
                                 onHeroActionFocused()
@@ -300,7 +300,7 @@ fun HeroContentSection(
                             description = description,
                             onShowFullDescription = onShowFullDescription,
                             upFocusRequester = playButtonFocusRequester,
-                            downFocusRequester = skipToEpisodesFocusRequester,
+                            onDownPressed = onSkipDownToEpisodes,
                             onTruncationChanged = { descriptionTakesFocus = it },
                             onFocused = onHeroActionFocused,
                             modifier = Modifier
@@ -337,7 +337,7 @@ private fun PlayButton(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
-    downFocusRequester: FocusRequester? = null,
+    onDownPressed: (() -> Boolean)? = null,
     restoreFocusToken: Int = 0,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -372,6 +372,13 @@ private fun PlayButton(
             }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
+                if (onDownPressed != null &&
+                    native.action == AndroidKeyEvent.ACTION_DOWN &&
+                    native.keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN &&
+                    onDownPressed()
+                ) {
+                    return@onPreviewKeyEvent true
+                }
                 if (onLongPress != null && native.action == AndroidKeyEvent.ACTION_DOWN) {
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
                         longPressTriggered = true
@@ -399,10 +406,7 @@ private fun PlayButton(
                 }
                 false
             }
-            .focusProperties {
-                up = FocusRequester.Cancel
-                downFocusRequester?.let { down = it }
-            },
+            .focusProperties { up = FocusRequester.Cancel },
         colors = ButtonDefaults.colors(
             containerColor = androidx.compose.ui.graphics.Color.White,
             focusedContainerColor = androidx.compose.ui.graphics.Color.White,

@@ -72,7 +72,9 @@ fun SynopsisDescription(
     upFocusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
-    onTruncationChanged: (Boolean) -> Unit = {}
+    onTruncationChanged: (Boolean) -> Unit = {},
+    /** Handles D-pad down itself; returning true consumes the key. */
+    onDownPressed: (() -> Boolean)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -138,6 +140,19 @@ fun SynopsisDescription(
                         interactionSource = interactionSource,
                         indication = null,
                         onClick = onShowFullDescription
+                    )
+                    .then(
+                        if (onDownPressed != null) {
+                            Modifier.onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                    onDownPressed()
+                                } else {
+                                    false
+                                }
+                            }
+                        } else {
+                            Modifier
+                        }
                     )
                     .padding(horizontal = highlightInset, vertical = 8.dp)
             } else {

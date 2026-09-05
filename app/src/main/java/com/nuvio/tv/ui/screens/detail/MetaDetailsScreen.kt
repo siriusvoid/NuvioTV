@@ -1494,6 +1494,27 @@ private fun MetaDetailsContent(
             ?: episodesForSeason.firstOrNull()?.id?.let { seasonEpisodeFocusRequesters[it] }
     }
 
+    // A plain focusProperties down = <episode card> cannot work from the hero: the episodes row is
+    // usually not composed yet, so the requester has no target and focus does not move. Scrolling
+    // to the row composes it without borrowing anyone's focus on the way; requestFocusAfterFrames
+    // then retries until the card is attached. Item order is fixed: hero, season tabs, episodes.
+    val showSeasonTabs = isSeries && seasons.isNotEmpty() &&
+        !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
+    val showEpisodesRow = isSeries && seasons.isNotEmpty()
+
+    val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
+        val episodesItemIndex = if (showSeasonTabs) 2 else 1
+        {
+            coroutineScope.launch {
+                listState.animateScrollToItem(episodesItemIndex)
+                seasonDownFocusRequester?.requestFocusAfterFrames(frames = 2)
+            }
+            true
+        }
+    } else {
+        null
+    }
+
     val activePeopleTabFocusRequester = visiblePeopleTabItems
         .firstOrNull { it.tab == activePeopleTab }
         ?.focusRequester
@@ -1819,10 +1840,7 @@ private fun MetaDetailsContent(
                         hideLogoDuringTrailer = hideLogoDuringTrailer,
                         isTrailerPlaying = isTrailerPlaying,
                         playButtonFocusRequester = heroPlayFocusRequester,
-                        // seasonDownFocusRequester already resolves to the right card: next to
-                        // watch, last focused, or the first of the season.
-                        skipToEpisodesFocusRequester = seasonDownFocusRequester
-                            .takeIf { skipSeasonsGoingDown },
+                        onSkipDownToEpisodes = skipDownToEpisodes,
                         onHeroActionFocused = {
                             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
                                 coroutineScope.launch {
@@ -1847,8 +1865,6 @@ private fun MetaDetailsContent(
             }
 
             // Season tabs and episodes for series
-            val showSeasonTabs = isSeries && seasons.isNotEmpty() && !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
-            val showEpisodesRow = isSeries && seasons.isNotEmpty()
             if (showSeasonTabs) {
                 item(key = "season_tabs", contentType = "season_tabs") {
                     Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {
