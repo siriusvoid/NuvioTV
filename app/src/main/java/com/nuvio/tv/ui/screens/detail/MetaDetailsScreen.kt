@@ -214,6 +214,9 @@ private const val DOWN_REPEAT_THROTTLE_MS = 120L
 /** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
 private const val SKIP_TO_EPISODES_SCROLL_MS = 450
 
+/** How far before the end focus is handed over, so its settle overlaps the scroll's tail. */
+private const val SKIP_FOCUS_LEAD_MS = 120L
+
 private const val CAST_FADE_MS = 160
 
 
@@ -1541,9 +1544,8 @@ private fun MetaDetailsContent(
                 else -> {
                     skipToEpisodesInFlight = true
                     skipRestoreActive = true
-                    // Marking the restore suppresses the focus-driven relocation, so the scroll
-                    // below is the only one that runs. Scrolling and requesting focus separately
-                    // meant two.
+                    // The restore path is how focus reaches a row that does not exist yet: the
+                    // card asks for it once the scroll below has built it.
                     markEpisodeRestore(episodeId, restoreOnResume = false)
                     coroutineScope.launch {
                         try {
@@ -1553,16 +1555,22 @@ private fun MetaDetailsContent(
                                 // viewport away, and the hero is exactly that tall — hence the
                                 // jump. Scrolling by the hero's measured height lands the row
                                 // below it at the top instead.
-                                listState.animateScrollBy(
-                                    (hero.offset + hero.size).toFloat(),
-                                    tween(durationMillis = SKIP_TO_EPISODES_SCROLL_MS, easing = FastOutSlowInEasing)
-                                )
+                                val scroll = launch {
+                                    listState.animateScrollBy(
+                                        (hero.offset + hero.size).toFloat(),
+                                        tween(durationMillis = SKIP_TO_EPISODES_SCROLL_MS, easing = FastOutSlowInEasing)
+                                    )
+                                }
+                                // Focus lands just before the page stops. The settle that follows
+                                // it then finishes the tail of the motion, rather than arriving
+                                // after everything has come to rest, where it reads as a nudge.
+                                delay(SKIP_TO_EPISODES_SCROLL_MS - SKIP_FOCUS_LEAD_MS)
+                                restoreFocusToken += 1
+                                scroll.join()
                             } else {
                                 listState.animateScrollToItem(if (showSeasonTabs) 2 else 1)
+                                restoreFocusToken += 1
                             }
-                            // Focus moves once the scroll is done: doing it up front unpins the
-                            // hero and runs focus traversal in the animation's own frames.
-                            restoreFocusToken += 1
                         } finally {
                             skipToEpisodesInFlight = false
                         }
