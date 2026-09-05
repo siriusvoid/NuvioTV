@@ -2029,7 +2029,7 @@ private suspend fun HomeViewModel.enrichInProgressItem(
             backdrop = if (settings.useArtwork) tmdbData?.backdrop.normalizeImageUrl() ?: meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop else meta.backdropUrl.normalizeImageUrl() ?: item.progress.backdrop,
             logo = if (settings.useArtwork) tmdbData?.logo.normalizeImageUrl() ?: meta.logo.normalizeImageUrl() ?: item.progress.logo else meta.logo.normalizeImageUrl() ?: item.progress.logo,
             episodeTitle = if (settings.useEpisodes) tmdbData?.episodeTitle
-                ?.takeUnless { isGeneratedTmdbEpisodeTitle(it, video?.episode) }
+                ?.takeUnless { isGeneratedTmdbEpisodeTitle(it, video?.episode ?: item.progress.episode) }
                 ?: video?.title?.takeIf { it.isNotBlank() }
                 ?: item.progress.episodeTitle
             else video?.title?.takeIf { it.isNotBlank() } ?: item.progress.episodeTitle
@@ -2113,6 +2113,7 @@ private suspend fun HomeViewModel.enrichNextUpItem(
         episode = video?.episode ?: item.info.episode,
         videoId = video?.id?.takeIf { it.isNotBlank() } ?: item.info.videoId,
         episodeTitle = if (settings.useEpisodes) tmdbData?.episodeTitle
+            ?.takeUnless { isGeneratedTmdbEpisodeTitle(it, video?.episode ?: item.info.episode) }
             ?: video?.title?.takeIf { it.isNotBlank() }
             ?: item.info.episodeTitle
         else video?.title?.takeIf { it.isNotBlank() } ?: item.info.episodeTitle,
