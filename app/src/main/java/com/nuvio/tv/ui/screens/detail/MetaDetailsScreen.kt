@@ -1521,33 +1521,45 @@ private fun MetaDetailsContent(
         !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
     val showEpisodesRow = isSeries && seasons.isNotEmpty()
 
+    var skipToEpisodesInFlight by remember { mutableStateOf(false) }
     val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
         {
             val episodeId = seasonDownEpisodeId
-            if (episodeId == null) {
-                false
-            } else {
-                // Marking the restore suppresses the focus-driven relocation, so the scroll below
-                // is the only one that runs. Scrolling and requesting focus separately meant two.
-                markEpisodeRestore(episodeId, restoreOnResume = false)
-                coroutineScope.launch {
-                    val hero = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
-                    if (hero != null) {
-                        // animateScrollToItem teleports when the target is more than a viewport
-                        // away, and the hero is exactly that tall — hence the jump. Scrolling by
-                        // the hero's measured height lands the row below it at the top instead.
-                        listState.animateScrollBy(
-                            (hero.offset + hero.size).toFloat(),
-                            tween(durationMillis = SKIP_TO_EPISODES_SCROLL_MS, easing = FastOutSlowInEasing)
-                        )
-                    } else {
-                        listState.animateScrollToItem(if (showSeasonTabs) 2 else 1)
+            when {
+                episodeId == null -> false
+                // Held down, the key auto-repeats. Each repeat would measure the distance from
+                // wherever the scroll had got to and restart from there, which crawls.
+                skipToEpisodesInFlight -> true
+                else -> {
+                    skipToEpisodesInFlight = true
+                    // Marking the restore suppresses the focus-driven relocation, so the scroll
+                    // below is the only one that runs. Scrolling and requesting focus separately
+                    // meant two.
+                    markEpisodeRestore(episodeId, restoreOnResume = false)
+                    coroutineScope.launch {
+                        try {
+                            val hero = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }
+                            if (hero != null) {
+                                // animateScrollToItem teleports when the target is more than a
+                                // viewport away, and the hero is exactly that tall — hence the
+                                // jump. Scrolling by the hero's measured height lands the row
+                                // below it at the top instead.
+                                listState.animateScrollBy(
+                                    (hero.offset + hero.size).toFloat(),
+                                    tween(durationMillis = SKIP_TO_EPISODES_SCROLL_MS, easing = FastOutSlowInEasing)
+                                )
+                            } else {
+                                listState.animateScrollToItem(if (showSeasonTabs) 2 else 1)
+                            }
+                            // Focus moves once the scroll is done: doing it up front unpins the
+                            // hero and runs focus traversal in the animation's own frames.
+                            restoreFocusToken += 1
+                        } finally {
+                            skipToEpisodesInFlight = false
+                        }
                     }
-                    // Focus moves once the scroll is done: doing it up front unpins the hero and
-                    // runs focus traversal in the same frames the animation needs.
-                    restoreFocusToken += 1
+                    true
                 }
-                true
             }
         }
     } else {
