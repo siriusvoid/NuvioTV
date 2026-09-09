@@ -13,6 +13,7 @@ import com.nuvio.tv.core.tracking.TrackingScrobbleAction
 import com.nuvio.tv.core.tracking.TrackingScrobbleEvent
 import com.nuvio.tv.core.tracking.buildTrackingMediaReference
 import com.nuvio.tv.core.tracking.scrobbleDiagnosticIdentity
+import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.data.local.SubtitleStyleSettings
 import com.nuvio.tv.data.repository.PlaybackIssueErrorInput
 import com.nuvio.tv.data.repository.PlaybackIssuePlaybackSettingsInput
@@ -344,13 +345,17 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                             val defaultAllocator = _loadControl?.allocator as? androidx.media3.exoplayer.upstream.DefaultAllocator
                             val totalFootprintBytes = defaultAllocator?.let { allocator ->
                                 try {
-                                    val method = allocator.javaClass.getMethod("getMemoryFootprint")
-                                    method.invoke(allocator) as? Int ?: 0
-                                } catch (e: Exception) {
-                                    0
+                                    allocator.memoryFootprint.toLong()
+                                } catch (_: Throwable) {
+                                    try {
+                                        val method = allocator.javaClass.getMethod("getMemoryFootprint")
+                                        (method.invoke(allocator) as? Number)?.toLong() ?: 0L
+                                    } catch (_: Throwable) {
+                                        0L
+                                    }
                                 }
-                            } ?: 0
-                            val totalActiveBytes = defaultAllocator?.totalBytesAllocated ?: 0
+                            } ?: 0L
+                            val totalActiveBytes = defaultAllocator?.totalBytesAllocated?.toLong() ?: 0L
                             val footprintMb = totalFootprintBytes / (1024 * 1024)
                             val activeMb = totalActiveBytes / (1024 * 1024)
                             Log.d("ExoMemory", "Off-heap OS ahead: $footprintMb MB, active: $activeMb MB")
@@ -720,7 +725,8 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
     scope.launch(kotlinx.coroutines.NonCancellable) {
         val effectiveContentId = watchProgressRepository.normalizeParentContentId(
             parentContentId = progress.contentId,
-            videoId = progress.videoId
+            videoId = progress.videoId,
+            profileId = profileId
         )
         val normalizedProgress = progress.copy(contentId = effectiveContentId)
         if (normalizedProgress.isCompleted()) {
@@ -728,12 +734,17 @@ internal fun PlayerRuntimeController.saveWatchProgressInternal(position: Long, d
                 hasMarkedCurrentEpisodeCompleted = true
                 watchProgressRepository.markAsCompleted(
                     normalizedProgress,
+                    profileId = profileId,
                     broadcastTrackingHistory = false
                 )
             }
             runCatching { tvRecommendationManager.onProgressRemoved(normalizedProgress.contentId) }
         } else {
-            watchProgressRepository.saveProgress(normalizedProgress, syncRemote = syncRemote)
+            watchProgressRepository.saveProgress(
+                normalizedProgress,
+                profileId = profileId,
+                syncRemote = syncRemote
+            )
             runCatching { tvRecommendationManager.updateSingleWatchNextProgram(normalizedProgress) }
         }
     }
@@ -1740,6 +1751,13 @@ fun PlayerRuntimeController.onEvent(event: PlayerEvent) {
                 message = "requestedByUser=true"
             )
             switchInternalPlayerEngineManually()
+        }
+        PlayerEvent.OnSwitchToMpvPlayer -> {
+            logSwitchTrace(
+                stage = "event-switch-to-mpv",
+                message = "requestedByUser=true"
+            )
+            switchToInternalPlayerEngine(InternalPlayerEngine.MVP_PLAYER, reason = "user-error-dialog-switch-to-mpv")
         }
         PlayerEvent.OnShowStreamInfo -> {
             val info = buildStreamInfoData()

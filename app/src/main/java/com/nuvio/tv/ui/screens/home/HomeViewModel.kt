@@ -603,10 +603,13 @@ class HomeViewModel @Inject constructor(
     private fun observeProgressSourceChanges() {
         viewModelScope.launch {
             var previousSource: com.nuvio.tv.data.local.WatchProgressSource? = null
+            var previousProfileId: Int? = null
             traktSettingsDataStore.watchProgressSource
                 .collect { source ->
-                    if (previousSource != null && previousSource != source) {
-                        // Source changed — clear CW caches to prevent mixing.
+                    val currentProfileId = profileManager.activeProfileId.value
+                    val profileChanged = previousProfileId != null && previousProfileId != currentProfileId
+                    if (previousSource != null && previousSource != source && !profileChanged) {
+                        // Genuine in-profile source change — clear CW caches to prevent mixing.
                         cwMetaCache.clear()
                         cwEnrichedNextUpOverlay.clear()
                         cwEnrichedInProgressOverlay.clear()
@@ -621,6 +624,7 @@ class HomeViewModel @Inject constructor(
                         loadContinueWatching()
                     }
                     previousSource = source
+                    previousProfileId = currentProfileId
                 }
         }
     }

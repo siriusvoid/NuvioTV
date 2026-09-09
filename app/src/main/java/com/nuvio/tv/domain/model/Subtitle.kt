@@ -10,7 +10,8 @@ data class Subtitle(
     val lang: String,
     val addonName: String,
     val addonLogo: String?,
-    val isStreamProvided: Boolean = false
+    val isStreamProvided: Boolean = false,
+    val headers: Map<String, String>? = null
 ) {
     /** An imported subtitle file, read off disk rather than over HTTP. */
     val isLocalFile: Boolean get() = url.startsWith("file:", ignoreCase = true)

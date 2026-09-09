@@ -57,6 +57,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,6 +68,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -82,6 +87,7 @@ import com.nuvio.tv.ui.util.RtlKeyUtils
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -91,6 +97,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.IconButton as TvIconButton
+import androidx.tv.material3.IconButtonDefaults as TvIconButtonDefaults
 import androidx.tv.material3.Text
 import com.nuvio.tv.ui.components.CatalogRowSection
 import com.nuvio.tv.ui.components.EmptyScreenState
@@ -134,7 +142,10 @@ fun SearchScreen(
     val searchFocusRequester = remember { FocusRequester() }
     val discoverFirstItemFocusRequester = remember { FocusRequester() }
     val recentClearHistoryFocusRequester = remember { FocusRequester() }
+    val discoverButtonFocusRequester = remember { FocusRequester() }
     var isSearchFieldFocused by remember { mutableStateOf(false) }
+    // Track the whole input row, including voice and Discover.
+    var inputRowHasFocus by remember { mutableStateOf(false) }
     var isRecentSearchSectionFocused by remember { mutableStateOf(false) }
     var focusResults by remember { mutableStateOf(false) }
     var pendingFocusMoveToResultsQuery by remember { mutableStateOf<String?>(null) }
@@ -260,9 +271,6 @@ fun SearchScreen(
             speechRecognizer?.destroy()
         }
     }
-    val topInputFocusRequester = remember(isVoiceSearchAvailable) {
-        if (isVoiceSearchAvailable) voiceFocusRequester else searchFocusRequester
-    }
     val launchVoiceSearch: () -> Unit = {
         if (!isVoiceSearchAvailable || speechRecognizer == null) {
             Toast.makeText(context, strVoiceUnavailable, Toast.LENGTH_SHORT).show()
@@ -297,7 +305,20 @@ fun SearchScreen(
     val searchRowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val searchRowEntryFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val searchRowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
+    // Mirrors the focused index for the active row. The map above is a plain MutableMap,
+    // so its values cannot drive recomposition of the Back handler.
+    val focusedResultItemIndex = remember { mutableIntStateOf(viewModel.savedFocusItemIndex.coerceAtLeast(0)) }
     var lastFocusedRowKey by remember { mutableStateOf(viewModel.savedFocusRowKey) }
+    var posterOptionsRowKey by remember { mutableStateOf<String?>(null) }
+
+    val saveSearchFocusForDetail: (String) -> Unit = { rowKey ->
+        viewModel.savedFocusRowKey = rowKey
+        viewModel.savedFocusItemIndex = searchRowFocusedItemIndex[rowKey] ?: 0
+        viewModel.savedRowScrollPositions = searchRowStates.mapValues {
+            it.value.firstVisibleItemIndex to it.value.firstVisibleItemScrollOffset
+        }
+        viewModel.hasSavedSearchFocus = true
+    }
 
     // Clean up stale keys when the catalog rows change.
     val visibleRowKeys = remember(uiState.catalogRows) {
@@ -439,14 +460,27 @@ fun SearchScreen(
         pendingFocusMoveHadExistingSearchRows = false
     }
 
+    val initialFocusRequester = if (isVoiceSearchAvailable) voiceFocusRequester else searchFocusRequester
+
     LaunchedEffect(Unit) {
         if (viewModel.hasSavedSearchFocus) return@LaunchedEffect
+        if (pendingDiscoverRestoreOnResume || restoreDiscoverFocus) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
-        runCatching { topInputFocusRequester.requestFocus() }
+        runCatching { initialFocusRequester.requestFocus() }
     }
 
-    // Push search suggestions to the native keyboard suggestion bar
-    LaunchedEffect(uiState.suggestions) {
+    // Restore the Discover button after returning.
+    LaunchedEffect(restoreDiscoverFocus) {
+        if (!restoreDiscoverFocus) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        runCatching { discoverButtonFocusRequester.requestFocus() }
+        restoreDiscoverFocus = false
+    }
+
+    // Push search suggestions to the native keyboard suggestion bar. Keyed on the query as well
+    // as the list: the keyboard rebuilds its strip as the query changes, so completions have to
+    // be pushed again even when the list is unchanged.
+    LaunchedEffect(uiState.query, uiState.suggestions) {
         val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             ?: return@LaunchedEffect
         val completions = uiState.suggestions.mapIndexed { index, name ->
@@ -457,10 +491,10 @@ fun SearchScreen(
 
     var isScreenActive by remember { mutableStateOf(true) }
     val latestPendingDiscoverRestore by rememberUpdatedState(pendingDiscoverRestoreOnResume)
+    val latestInitialFocusRequester by rememberUpdatedState(initialFocusRequester)
     val latestShouldKeepSearchFocus by rememberUpdatedState(
         focusResults || uiState.isSearching || isVoiceListening
     )
-    val latestVoiceSearchAvailable by rememberUpdatedState(isVoiceSearchAvailable)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -473,15 +507,10 @@ fun SearchScreen(
                     // already restored it or will restore it via focusedItemIndex.
                     didRestoreSearchFocus.value = false
                 } else if (!latestShouldKeepSearchFocus) {
+                    // Keep resume and entry consistent; ON_RESUME also fires on entry.
                     coroutineScope.launch {
                         repeat(2) { withFrameNanos { } }
-                        runCatching {
-                            if (latestVoiceSearchAvailable) {
-                                voiceFocusRequester.requestFocus()
-                            } else {
-                                searchFocusRequester.requestFocus()
-                            }
-                        }
+                        runCatching { latestInitialFocusRequester.requestFocus() }
                     }
                 }
             } else if (event == Lifecycle.Event.ON_PAUSE) {
@@ -497,10 +526,49 @@ fun SearchScreen(
 
     Box(
         modifier = Modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .background(NuvioTheme.colors.Background),
         contentAlignment = Alignment.TopCenter
     ) {
         val listState = rememberLazyListState()
+
+        // Step back within Search before falling through to the root handler.
+        val focusedRowKey = lastFocusedRowKey
+        val focusedItemIndex = focusedResultItemIndex.intValue
+        BackHandler(
+            enabled = !inputRowHasFocus &&
+                (isRecentSearchSectionFocused || (!isDiscoverMode && focusedRowKey != null))
+        ) {
+            if (!isRecentSearchSectionFocused && focusedItemIndex > 0 && focusedRowKey != null) {
+                searchRowFocusedItemIndex[focusedRowKey] = 0
+                focusedResultItemIndex.intValue = 0
+                coroutineScope.launch {
+                    searchRowStates[focusedRowKey]?.scrollToItem(0)
+                    searchRowFocusRequesters[focusedRowKey]?.let { runCatching { it.requestFocus() } }
+                }
+            } else {
+                coroutineScope.launch {
+                    listState.scrollToItem(0)
+                    runCatching { searchFocusRequester.requestFocus() }
+                }
+            }
+        }
+
+        // Skip the initial composition; there is nothing stale to reset yet.
+        var lastScrollResetQuery by remember { mutableStateOf(uiState.query) }
+        LaunchedEffect(uiState.query) {
+            if (uiState.query == lastScrollResetQuery) return@LaunchedEffect
+            lastScrollResetQuery = uiState.query
+            // Clear stale focus so the restorer cannot return to an item from the previous query.
+            searchRowFocusedItemIndex.clear()
+            focusedResultItemIndex.intValue = 0
+            // Clear saved offsets too; rebuilt rows can otherwise inherit the old query's position.
+            viewModel.savedRowScrollPositions = emptyMap()
+            listState.scrollToItem(0)
+            // Snapshot the states because scrollToItem suspends.
+            searchRowStates.values.toList().forEach { it.scrollToItem(0) }
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -515,6 +583,7 @@ fun SearchScreen(
         ) {
             item(key = "search_input") {
                 SearchInputField(
+                    modifier = Modifier.onFocusChanged { inputRowHasFocus = it.hasFocus },
                     query = uiState.query,
                     canMoveToResults = canMoveToResults,
                     voiceFocusRequester = if (isVoiceSearchAvailable) voiceFocusRequester else null,
@@ -534,7 +603,13 @@ fun SearchScreen(
                         viewModel.onEvent(SearchEvent.RememberSearchFromTextInput)
                         focusResults = true
                     },
-                    onOpenDiscover = onOpenDiscover,
+                    onOpenDiscover = {
+                        // Arm the restore so coming back lands on this button rather than the
+                        // default entry focus.
+                        pendingDiscoverRestoreOnResume = true
+                        onOpenDiscover()
+                    },
+                    discoverFocusRequester = discoverButtonFocusRequester,
                     showDiscoverButton = uiState.discoverLocation == DiscoverLocation.IN_SEARCH,
                     keyboardController = keyboardController,
                     clearHistoryFocusRequester = if (showRecentSearches) recentClearHistoryFocusRequester else null,
@@ -551,8 +626,12 @@ fun SearchScreen(
                             onClearHistory = {
                                 viewModel.onEvent(SearchEvent.ClearRecentSearches)
                             },
+                            onRemoveSearch = { query ->
+                                viewModel.onEvent(SearchEvent.RemoveRecentSearch(query))
+                            },
                             onSectionFocusChanged = { focused -> isRecentSearchSectionFocused = focused },
                             clearHistoryFocusRequester = recentClearHistoryFocusRequester,
+                            emptyHistoryFocusRequester = searchFocusRequester,
                             modifier = Modifier.padding(horizontal = 52.dp)
                         )
                     }
@@ -580,10 +659,14 @@ fun SearchScreen(
                                     onClearHistory = {
                                         viewModel.onEvent(SearchEvent.ClearRecentSearches)
                                     },
+                                    onRemoveSearch = { query ->
+                                        viewModel.onEvent(SearchEvent.RemoveRecentSearch(query))
+                                    },
                                     onSectionFocusChanged = { focused ->
                                         isRecentSearchSectionFocused = focused
                                     },
                                     clearHistoryFocusRequester = recentClearHistoryFocusRequester,
+                                    emptyHistoryFocusRequester = searchFocusRequester,
                                     modifier = Modifier.padding(horizontal = 52.dp)
                                 )
                             } else {
@@ -695,12 +778,15 @@ fun SearchScreen(
                                 enableRowFocusRestorer = true,
                                 rowFocusRequester = rowFocusRequester,
                                 entryFocusRequester = entryFocusRequester,
+                                // Anchor Up to the field; geometric focus varies with the card.
+                                upFocusRequester = if (index == 0) searchFocusRequester else null,
                                 listState = listState,
                                 restorerFocusedIndex = if (restoringSearchFocus.value && catalogKey == viewModel.savedFocusRowKey) {
                                     viewModel.savedFocusItemIndex
                                 } else {
                                     searchRowFocusedItemIndex[catalogKey] ?: -1
                                 },
+                                focusResetToken = uiState.query,
                                 isItemWatched = { item ->
                                     val isSeries = item.apiType.equals("series", ignoreCase = true) || item.apiType.equals("tv", ignoreCase = true)
                                     if (isSeries) item.id in watchedSeriesIds else item.id in watchedMovieIds
@@ -708,7 +794,10 @@ fun SearchScreen(
                                 focusedItemIndex = when {
                                     restoringSearchFocus.value && catalogKey == viewModel.savedFocusRowKey ->
                                         viewModel.savedFocusItemIndex
-                                    focusResults && index == 0 -> 0
+                                    // The remembered card, not item 0. A query change clears
+                                    // the map, so a new search still lands on the first item.
+                                    focusResults && index == 0 ->
+                                        searchRowFocusedItemIndex[catalogKey] ?: 0
                                     else -> -1
                                 },
                                 onItemFocused = { itemIndex ->
@@ -724,6 +813,7 @@ fun SearchScreen(
                                     // pending auto-focus so it doesn't steal focus later.
                                     pendingFocusMoveToResultsQuery = null
                                     searchRowFocusedItemIndex[catalogKey] = itemIndex
+                                    focusedResultItemIndex.intValue = itemIndex
                                     // Prefetch meta for the focused item to warm cache for detail screen.
                                     catalogRow.items.getOrNull(itemIndex)?.let { item ->
                                         viewModel.prefetchMetaOnFocus(item.id, item.rawType)
@@ -732,13 +822,7 @@ fun SearchScreen(
                                 },
                                 onItemClick = { id, type, addonBaseUrl ->
                                     lastFocusedRowKey = catalogKey
-                                    // Save focus state to ViewModel before navigating
-                                    viewModel.savedFocusRowKey = catalogKey
-                                    viewModel.savedFocusItemIndex = searchRowFocusedItemIndex[catalogKey] ?: 0
-                                    viewModel.savedRowScrollPositions = searchRowStates.mapValues {
-                                        it.value.firstVisibleItemIndex to it.value.firstVisibleItemScrollOffset
-                                    }
-                                    viewModel.hasSavedSearchFocus = true
+                                    saveSearchFocusForDetail(catalogKey)
                                     val clickedItem = catalogRow.items.firstOrNull { it.id == id }
                                     val backdrop = viewModel.getCachedBackdrop(id, type)
                                         ?: clickedItem?.backdropUrl
@@ -746,6 +830,7 @@ fun SearchScreen(
                                     onNavigateToDetail(id, type, addonBaseUrl)
                                 },
                                 onItemLongPress = { item, addonBaseUrl ->
+                                    posterOptionsRowKey = catalogKey
                                     viewModel.posterOptions.show(item, addonBaseUrl)
                                 },
                                 onSeeAll = {
@@ -807,6 +892,9 @@ fun SearchScreen(
         state = posterOptionsState,
         controller = viewModel.posterOptions,
         onNavigateToDetail = { id, type, addonBaseUrl ->
+            // Consume it, so a later navigation cannot reuse this row.
+            posterOptionsRowKey?.let(saveSearchFocusForDetail)
+            posterOptionsRowKey = null
             val clickedItem = uiState.catalogRows
                 .flatMap { it.items }
                 .firstOrNull { it.id == id }
@@ -823,11 +911,34 @@ private fun RecentSearchesSection(
     recentSearches: List<String>,
     onSearchSelected: (String) -> Unit,
     onClearHistory: () -> Unit,
+    onRemoveSearch: (String) -> Unit,
     onSectionFocusChanged: (Boolean) -> Unit,
     clearHistoryFocusRequester: FocusRequester,
+    emptyHistoryFocusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val searchFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val removeFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    var pendingDownwardFocus by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // Downward focus enters the query column. The remove buttons are reached with right.
+    val firstSearchFocusRequester = searchFocusRequesters.getOrPut(recentSearches.first()) {
+        FocusRequester()
+    }
+    LaunchedEffect(recentSearches, pendingDownwardFocus) {
+        val visibleQueries = recentSearches.toSet()
+        searchFocusRequesters.keys.retainAll(visibleQueries)
+        removeFocusRequesters.keys.retainAll(visibleQueries)
+
+        val (removedQuery, replacementQuery) = pendingDownwardFocus
+            ?: return@LaunchedEffect
+        if (removedQuery !in visibleQueries) {
+            removeFocusRequesters[replacementQuery]?.let { requester ->
+                runCatching { requester.requestFocus() }
+            }
+            pendingDownwardFocus = null
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -849,7 +960,11 @@ private fun RecentSearchesSection(
             )
             Button(
                 onClick = onClearHistory,
-                modifier = Modifier.focusRequester(clearHistoryFocusRequester),
+                modifier = Modifier
+                    .focusRequester(clearHistoryFocusRequester)
+                    .focusProperties {
+                        down = firstSearchFocusRequester
+                    },
                 colors = ButtonDefaults.colors(
                     containerColor = NuvioTheme.colors.BackgroundCard,
                     contentColor = NuvioTheme.colors.TextPrimary,
@@ -862,35 +977,136 @@ private fun RecentSearchesSection(
             }
         }
 
-        recentSearches.forEach { recentQuery ->
-            Button(
-                onClick = { onSearchSelected(recentQuery) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onPreviewKeyEvent { keyEvent ->
-                        val clearHistoryKey = RtlKeyUtils.getClearHistoryDpadKey(isRtl)
-                        if (keyEvent.nativeKeyEvent.keyCode == clearHistoryKey) {
-                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
-                                runCatching { clearHistoryFocusRequester.requestFocus() }
+        recentSearches.forEachIndexed { index, recentQuery ->
+            key(recentQuery) {
+                val searchFocusRequester = searchFocusRequesters.getOrPut(recentQuery) {
+                    FocusRequester()
+                }
+                val removeFocusRequester = removeFocusRequesters.getOrPut(recentQuery) {
+                    FocusRequester()
+                }
+                val previousRemoveFocusRequester = if (index == 0) {
+                    clearHistoryFocusRequester
+                } else {
+                    removeFocusRequesters.getOrPut(recentSearches[index - 1]) { FocusRequester() }
+                }
+                val nextRemoveFocusRequester = recentSearches.getOrNull(index + 1)?.let {
+                    removeFocusRequesters.getOrPut(it) { FocusRequester() }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    var isSearchFocused by remember(recentQuery) { mutableStateOf(false) }
+                    val searchScale by animateFloatAsState(
+                        targetValue = if (isSearchFocused) 1.02f else 1f,
+                        animationSpec = tween(durationMillis = 140),
+                        label = "recentSearchScale"
+                    )
+                    Button(
+                        onClick = { onSearchSelected(recentQuery) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(searchFocusRequester)
+                            .focusProperties {
+                                if (isRtl) {
+                                    left = removeFocusRequester
+                                } else {
+                                    right = removeFocusRequester
+                                }
                             }
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                colors = ButtonDefaults.colors(
-                    containerColor = NuvioTheme.colors.BackgroundCard,
-                    contentColor = NuvioTheme.colors.TextPrimary,
-                    focusedContainerColor = NuvioTheme.colors.FocusBackground,
-                    focusedContentColor = NuvioTheme.colors.Primary
-                ),
-                shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
-            ) {
-                Text(
-                    text = recentQuery,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                            .onFocusChanged { isSearchFocused = it.isFocused }
+                            .graphicsLayer {
+                                scaleX = searchScale
+                                scaleY = searchScale
+                                transformOrigin = TransformOrigin(
+                                    pivotFractionX = if (isRtl) 1f else 0f,
+                                    pivotFractionY = 0.5f
+                                )
+                            },
+                        colors = ButtonDefaults.colors(
+                            containerColor = NuvioTheme.colors.BackgroundCard,
+                            contentColor = NuvioTheme.colors.TextPrimary,
+                            focusedContainerColor = NuvioTheme.colors.FocusBackground,
+                            focusedContentColor = NuvioTheme.colors.Primary
+                        ),
+                        scale = ButtonDefaults.scale(focusedScale = 1f),
+                        shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
+                    ) {
+                        Text(
+                            text = recentQuery,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    var isRemoveFocused by remember(recentQuery) { mutableStateOf(false) }
+                    TvIconButton(
+                        onClick = {
+                            val nextQuery = recentSearches.getOrNull(index + 1)
+                            val previousQuery = recentSearches.getOrNull(index - 1)
+                            when {
+                                nextQuery != null -> {
+                                    pendingDownwardFocus = recentQuery to nextQuery
+                                }
+                                previousQuery != null -> {
+                                    runCatching {
+                                        removeFocusRequesters.getValue(previousQuery).requestFocus()
+                                    }
+                                }
+                                else -> {
+                                    runCatching { emptyHistoryFocusRequester.requestFocus() }
+                                }
+                            }
+                            onRemoveSearch(recentQuery)
+                        },
+                        modifier = Modifier
+                            .focusRequester(removeFocusRequester)
+                            .focusProperties {
+                                up = previousRemoveFocusRequester
+                                down = nextRemoveFocusRequester ?: FocusRequester.Cancel
+                                if (isRtl) {
+                                    right = searchFocusRequester
+                                } else {
+                                    left = searchFocusRequester
+                                }
+                            }
+                            .onFocusChanged { isRemoveFocused = it.isFocused }
+                            .size(36.dp)
+                            .then(
+                                if (isRemoveFocused) {
+                                    Modifier.border(
+                                        width = NuvioTheme.spacing.xxs,
+                                        color = NuvioTheme.colors.FocusRing,
+                                        shape = RoundedCornerShape(NuvioTheme.radii.md)
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        colors = TvIconButtonDefaults.colors(
+                            containerColor = Color.Transparent,
+                            focusedContainerColor = NuvioTheme.colors.FocusBackground,
+                            contentColor = NuvioTheme.colors.TextPrimary,
+                            focusedContentColor = NuvioTheme.colors.TextPrimary
+                        ),
+                        scale = TvIconButtonDefaults.scale(focusedScale = 1f),
+                        shape = TvIconButtonDefaults.shape(
+                            shape = RoundedCornerShape(NuvioTheme.radii.md)
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(
+                                R.string.cd_remove_recent_search,
+                                recentQuery
+                            ),
+                            modifier = Modifier.size(18.dp),
+                            tint = NuvioTheme.colors.TextPrimary
+                        )
+                    }
+                }
             }
         }
     }
@@ -898,6 +1114,7 @@ private fun RecentSearchesSection(
 
 @Composable
 private fun SearchInputField(
+    modifier: Modifier = Modifier,
     query: String,
     canMoveToResults: Boolean,
     voiceFocusRequester: FocusRequester?,
@@ -911,6 +1128,7 @@ private fun SearchInputField(
     onVoiceSearch: () -> Unit,
     onMoveToResults: () -> Unit,
     onOpenDiscover: () -> Unit,
+    discoverFocusRequester: FocusRequester? = null,
     showDiscoverButton: Boolean,
     keyboardController: androidx.compose.ui.platform.SoftwareKeyboardController?,
     clearHistoryFocusRequester: FocusRequester?,
@@ -921,7 +1139,7 @@ private fun SearchInputField(
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = NuvioTheme.spacing.xxxl)
             .focusGroup(),
@@ -931,6 +1149,9 @@ private fun SearchInputField(
             IconButton(
                 onClick = onOpenDiscover,
                 modifier = Modifier
+                    .then(
+                        discoverFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier
+                    )
                     .onFocusChanged { isDiscoverButtonFocused = it.isFocused }
                     .size(NuvioTheme.spacing.huge)
                     .border(
@@ -1129,7 +1350,11 @@ private fun SearchInputField(
             var isClearButtonFocused by remember { mutableStateOf(false) }
             Spacer(modifier = Modifier.width(NuvioTheme.spacing.md))
             IconButton(
-                onClick = { onQueryChanged("") },
+                onClick = {
+                    // Clearing drops this button from the row, so hand focus back first.
+                    runCatching { searchFocusRequester.requestFocus() }
+                    onQueryChanged("")
+                },
                 modifier = Modifier
                     .onFocusChanged { isClearButtonFocused = it.isFocused }
                     .size(NuvioTheme.spacing.huge)
