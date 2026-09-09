@@ -1,7 +1,7 @@
-name: Release (Full APK)
+name: Release (Nuvio APK)
 run-name: ${{ github.event.head_commit.message || github.ref_name }}
 
-# Builds the FULL flavor (in-app updater enabled) as release-like, debug-signed
+# Builds the NUVIO flavor (in-app updater enabled) as release-like, debug-signed
 # APKs and publishes them as a GitHub Release. The in-app updater on test/main
 # reads releases/latest from this repo, picks the ABI-matching APK, and installs
 # it — so the APKs here must be signed with the SAME shared debug keystore
@@ -93,7 +93,7 @@ jobs:
           fi
           echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 --decode > "${{ runner.temp }}/debug.keystore"
 
-      - name: Build full benchmark APKs (release-like, debug-signed)
+      - name: Build nuvio benchmark APKs (release-like, debug-signed)
         env:
           INTRODB_API_URL: ${{ secrets.INTRODB_API_URL }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
@@ -101,7 +101,7 @@ jobs:
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
           SIMKL_CLIENT_ID: ${{ secrets.SIMKL_CLIENT_ID }}
           DEBUG_KEYSTORE_FILE: ${{ runner.temp }}/debug.keystore
-        run: ./gradlew assembleFullBenchmark
+        run: ./gradlew assembleNuvioBenchmark
 
       - name: Create GitHub Release
         env:
@@ -153,9 +153,9 @@ jobs:
             ARGS+=(--prerelease)
           fi
           shopt -s nullglob
-          APKS=(app/build/outputs/apk/full/benchmark/*.apk)
+          APKS=(app/build/outputs/apk/nuvio/benchmark/*.apk)
           if [ ${#APKS[@]} -eq 0 ]; then
-            echo "::error::No APKs found in app/build/outputs/apk/full/benchmark/"
+            echo "::error::No APKs found in app/build/outputs/apk/nuvio/benchmark/"
             exit 1
           fi
           gh "${ARGS[@]}" "${APKS[@]}"

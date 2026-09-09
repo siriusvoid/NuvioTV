@@ -2841,6 +2841,15 @@ class MetaDetailsViewModel @Inject constructor(
     private fun fetchTrailerUrl() {
         val meta = _uiState.value.meta ?: return
 
+        // With both trailer paths off there is nothing to resolve, and the TMDB id lookup
+        // below runs before either flag is checked - so without this the work happens on
+        // every detail open and the result is thrown away.
+        if (!AppFeaturePolicy.inAppTrailerPlaybackEnabled &&
+            !AppFeaturePolicy.externalTrailerPlaybackEnabled
+        ) {
+            return
+        }
+
         trailerFetchJob?.cancel()
         trailerFetchJob = viewModelScope.launch {
             _uiState.update { state ->

@@ -147,6 +147,9 @@ android {
         // In-app updater (GitHub Releases)
         buildConfigField("String", "GITHUB_OWNER", "\"siriusvoid\"")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
+
+        // Read by the AppFeaturePolicy shared between playstore and nuvio.
+        buildConfigField("boolean", "FEATURE_IMDB_RATING_LOGO_ENABLED", "true")
     }
 
     flavorDimensions += "distribution"
@@ -169,6 +172,37 @@ android {
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IMDB_RATING_LOGO_ENABLED", "false")
+        }
+        // Personal build: playstore's plugin stubs (no JS runtime, no cloudstream) plus the
+        // real in-app updater, no torrent binary and no trailers. No applicationId override,
+        // so it installs over an existing full build instead of alongside it.
+        create("nuvio") {
+            dimension = "distribution"
+            buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
+        }
+    }
+
+    sourceSets {
+        // nuvio = playstore's plugin stubs + the REAL updater; it must not pick up the
+        // playstore updater stub, so both updaters live outside the flavor dirs.
+        getByName("nuvio") {
+            java.srcDirs("src/playstore/java", "src/updater/java")
+        }
+        // The 41MB libtorrserver.so sits in a holder dir referenced only by the flavors that
+        // ship torrent streaming, so nuvio never packages it.
+        getByName("full") {
+            jniLibs.srcDir("src/torrentlibs")
+            java.srcDir("src/updater/java")
+        }
+        getByName("playstore") {
+            jniLibs.srcDir("src/torrentlibs")
+            java.srcDir("src/updaterstub/java")
         }
     }
 
