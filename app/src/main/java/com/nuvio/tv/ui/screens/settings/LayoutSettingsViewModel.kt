@@ -79,6 +79,7 @@ data class LayoutSettingsUiState(
     val showFullReleaseDate: Boolean = true,
     val hideParentalRating: Boolean = false,
     val hideGenres: Boolean = false,
+    val skipSeasonsGoingDown: Boolean = false,
     val hideExtraMetadata: Boolean = false,
     val hideActorNames: Boolean = false,
     val nextUpFromFurthestEpisode: Boolean = true,
@@ -139,6 +140,7 @@ sealed class LayoutSettingsEvent {
     data class SetShowFullReleaseDate(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetHideParentalRating(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetHideGenres(val enabled: Boolean) : LayoutSettingsEvent()
+    data class SetSkipSeasonsGoingDown(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetHideExtraMetadata(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetHideActorNames(val enabled: Boolean) : LayoutSettingsEvent()
     data class SetNextUpFromFurthestEpisode(val enabled: Boolean) : LayoutSettingsEvent()
@@ -371,6 +373,11 @@ class LayoutSettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            layoutPreferenceDataStore.skipSeasonsGoingDown.distinctUntilChanged().collectLatest { enabled ->
+                updateUiStateIfChanged { it.copy(skipSeasonsGoingDown = enabled) }
+            }
+        }
+        viewModelScope.launch {
             layoutPreferenceDataStore.hideGenres.distinctUntilChanged().collectLatest { enabled ->
                 updateUiStateIfChanged { it.copy(hideGenres = enabled) }
             }
@@ -462,6 +469,7 @@ class LayoutSettingsViewModel @Inject constructor(
             is LayoutSettingsEvent.SetShowFullReleaseDate -> setShowFullReleaseDate(event.enabled)
             is LayoutSettingsEvent.SetHideParentalRating -> setHideParentalRating(event.enabled)
             is LayoutSettingsEvent.SetHideGenres -> setHideGenres(event.enabled)
+            is LayoutSettingsEvent.SetSkipSeasonsGoingDown -> setSkipSeasonsGoingDown(event.enabled)
             is LayoutSettingsEvent.SetHideExtraMetadata -> setHideExtraMetadata(event.enabled)
             is LayoutSettingsEvent.SetHideActorNames -> setHideActorNames(event.enabled)
             is LayoutSettingsEvent.SetNextUpFromFurthestEpisode -> setNextUpFromFurthestEpisode(event.enabled)
@@ -819,6 +827,13 @@ class LayoutSettingsViewModel @Inject constructor(
         if (_uiState.value.hideGenres == enabled) return
         viewModelScope.launch {
             layoutPreferenceDataStore.setHideGenres(enabled)
+        }
+    }
+
+    private fun setSkipSeasonsGoingDown(enabled: Boolean) {
+        if (_uiState.value.skipSeasonsGoingDown == enabled) return
+        viewModelScope.launch {
+            layoutPreferenceDataStore.setSkipSeasonsGoingDown(enabled)
         }
     }
 

@@ -120,6 +120,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     private val showFullReleaseDateKey = booleanPreferencesKey("show_full_release_date")
     private val hideParentalRatingKey = booleanPreferencesKey("hide_parental_rating")
     private val hideGenresKey = booleanPreferencesKey("hide_genres")
+    private val skipSeasonsGoingDownKey = booleanPreferencesKey("skip_seasons_going_down")
     private val hideExtraMetadataKey = booleanPreferencesKey("hide_extra_metadata")
     private val hideActorNamesKey = booleanPreferencesKey("hide_actor_names")
     private val memoryOnlyVerticalScrollKey = booleanPreferencesKey("memory_only_vertical_scroll")
@@ -404,6 +405,11 @@ class LayoutPreferenceDataStore @Inject constructor(
 
     val hideGenres: Flow<Boolean> = profileFlow { prefs ->
         prefs[hideGenresKey] ?: false
+    }
+
+    /** Down from the hero goes straight to the episodes; up from them still stops on the seasons. */
+    val skipSeasonsGoingDown: Flow<Boolean> = profileFlow { prefs ->
+        prefs[skipSeasonsGoingDownKey] ?: false
     }
 
     val hideExtraMetadata: Flow<Boolean> = profileFlow { prefs ->
@@ -804,6 +810,12 @@ class LayoutPreferenceDataStore @Inject constructor(
     suspend fun setHideGenres(enabled: Boolean) {
         store().edit { prefs ->
             prefs[hideGenresKey] = enabled
+        }
+    }
+
+    suspend fun setSkipSeasonsGoingDown(enabled: Boolean) {
+        store().edit { prefs ->
+            prefs[skipSeasonsGoingDownKey] = enabled
         }
     }
 
