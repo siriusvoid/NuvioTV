@@ -685,6 +685,8 @@
     <string name="layout_show_full_release_date_sub">Для фильмов показывать полную дату выхода, а не только год.</string>
     <string name="layout_hide_parental_rating">Скрыть возрастной рейтинг</string>
     <string name="layout_hide_parental_rating_sub">Скрыть значок возрастного рейтинга в главном блоке и на странице описания.</string>
+    <string name="layout_skip_seasons_going_down">Пропускать сезоны при переходе вниз</string>
+    <string name="layout_skip_seasons_going_down_sub">Нажатие вниз ведёт сразу к эпизодам; строка сезонов доступна по нажатию вверх.</string>
     <string name="layout_hide_genres">Скрыть жанры</string>
     <string name="layout_hide_genres_sub">Скрыть жанры в главном блоке и на странице описания.</string>
     <string name="layout_hide_extra_metadata">Скрыть дополнительные метаданные</string>

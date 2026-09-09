@@ -168,6 +168,7 @@ class MetaDetailsViewModel @Inject constructor(
         observeShowFullReleaseDate()
         observeHideParentalRating()
         observeHideGenres()
+        observeSkipSeasonsGoingDown()
         observeHideExtraMetadata()
         observeHideActorNames()
         observeHideUnreleasedContent()
@@ -689,6 +690,22 @@ class MetaDetailsViewModel @Inject constructor(
                     if (state.hideParentalRating == enabled) state else state.copy(hideParentalRating = enabled)
                 }
             }
+        }
+    }
+
+    private fun observeSkipSeasonsGoingDown() {
+        viewModelScope.launch {
+            layoutPreferenceDataStore.skipSeasonsGoingDown
+                .distinctUntilChanged()
+                .collectLatest { enabled ->
+                    _uiState.update { state ->
+                        if (state.skipSeasonsGoingDown == enabled) {
+                            state
+                        } else {
+                            state.copy(skipSeasonsGoingDown = enabled)
+                        }
+                    }
+                }
         }
     }
 

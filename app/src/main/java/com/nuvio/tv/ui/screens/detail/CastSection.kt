@@ -34,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,7 +43,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -83,7 +81,8 @@ fun CastSection(
     val restoreFocusRequester = remember { FocusRequester() }
     val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val castPrefetchStrategy = remember { LazyListPrefetchStrategy(nestedPrefetchItemCount = 2) }
-    val lazyListState = rememberLazyListState(prefetchStrategy = castPrefetchStrategy)
+    // Not saveable: a restored scroll offset leaves the first member unbuilt, so entry focus lands elsewhere.
+    val lazyListState = remember { LazyListState(prefetchStrategy = castPrefetchStrategy) }
 
     LaunchedEffect(cast, leadingCast) {
         val validKeys = buildSet {
@@ -97,8 +96,11 @@ fun CastSection(
         itemFocusRequesters.keys.retainAll(validKeys)
     }
 
-    // Track whether a restore is pending so focusRestorer can use the correct fallback
+    // Track whether a restore is pending so the enter below can use the correct target
     var restorePending by remember { mutableStateOf(false) }
+
+    // Plain holder, not state: written on every focus move, read only on entry.
+    val lastFocusedKey = remember { arrayOfNulls<String>(1) }
 
     // Only react to restoreFocusToken changes (triggered on ON_RESUME).
     // restorePersonId/cast lists are read inside but not used as keys to avoid
@@ -152,8 +154,15 @@ fun CastSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (sectionFocusRequester != null) Modifier.focusRequester(sectionFocusRequester) else Modifier)
-                .focusRestorer { if (restorePending) restoreFocusRequester else firstItemFocusRequester }
-                .focusGroup(),
+                .focusProperties {
+                    enter = {
+                        when {
+                            restorePending -> restoreFocusRequester
+                            else -> lastFocusedKey[0]?.let { itemFocusRequesters[it] }
+                                ?: firstItemFocusRequester
+                        }
+                    }
+                },
             state = lazyListState,
             contentPadding = PaddingValues(horizontal = NuvioTheme.spacing.xxxl, vertical = 6.dp),
             horizontalArrangement = Arrangement.Start
@@ -170,7 +179,8 @@ fun CastSection(
                 ) { index, member ->
                     val isLastLeading = member == leadingCast.last()
                     val endPadding = if (isLastLeading && cast.isNotEmpty()) NuvioTheme.spacing.none else standardGap
-                    val isRestoreTarget = member.tmdbId == restorePersonId
+                    // Both null compare equal, so members without an id would all be the restore target.
+                    val isRestoreTarget = restorePersonId != null && member.tmdbId == restorePersonId
                     val isFirstItem = index == 0
                     val focusKey = "leading:${member.tmdbId ?: member.name}:${member.character.orEmpty()}"
                     val focusRequester = when {
@@ -189,6 +199,7 @@ fun CastSection(
                             itemWidth = itemWidth,
                             cardSize = cardSize,
                             onFocused = {
+                                lastFocusedKey[0] = focusKey
                                 onCastMemberFocused(member)
                                 if (isRestoreTarget && restoreFocusToken > 0) {
                                     restorePending = false
@@ -224,7 +235,7 @@ fun CastSection(
                     index.toString() + "|" + (member.tmdbId?.toString() ?: member.name) + "|" + (member.character ?: "") + "|" + (member.photo ?: "")
                 }
             ) { index, member ->
-                val isRestoreTarget = member.tmdbId == restorePersonId
+                val isRestoreTarget = restorePersonId != null && member.tmdbId == restorePersonId
                 val isFirstCastItem = index == 0 && leadingCast.isEmpty()
                 val focusKey = "cast:${member.tmdbId ?: member.name}:${member.character.orEmpty()}"
                 val focusRequester = when {
@@ -243,6 +254,7 @@ fun CastSection(
                         itemWidth = itemWidth,
                         cardSize = cardSize,
                         onFocused = {
+                            lastFocusedKey[0] = focusKey
                             onCastMemberFocused(member)
                             if (isRestoreTarget && restoreFocusToken > 0) {
                                 restorePending = false

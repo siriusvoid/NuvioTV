@@ -110,6 +110,8 @@ fun HeroContentSection(
     hideExtraMetadata: Boolean = false,
     isTrailerPlaying: Boolean = false,
     playButtonFocusRequester: FocusRequester? = null,
+    /** Set when the season row should be skipped on the way down; null keeps the default order. */
+    onSkipDownToEpisodes: (() -> Boolean)? = null,
     restorePlayFocusToken: Int = 0,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
@@ -125,6 +127,8 @@ fun HeroContentSection(
         }
     }
     var logoLoadFailed by remember(meta.logo) { mutableStateOf(false) }
+    // SynopsisDescription only takes focus while truncated; it reports that here.
+    var descriptionTakesFocus by remember(meta.id) { mutableStateOf(false) }
     val shouldShowLogo =
         !meta.logo.isNullOrBlank() &&
             !logoLoadFailed &&
@@ -230,6 +234,10 @@ fun HeroContentSection(
                             onClick = onPlayClick,
                             onLongPress = onPlayLongPress,
                             focusRequester = playButtonFocusRequester,
+                            // Only when the description will not take the focus itself; when it
+                            // does, it carries the skip.
+                            onDownPressed = onSkipDownToEpisodes
+                                ?.takeIf { !descriptionTakesFocus },
                             restoreFocusToken = restorePlayFocusToken,
                             onFocusRestored = {
                                 onHeroActionFocused()
@@ -294,6 +302,8 @@ fun HeroContentSection(
                             description = description,
                             onShowFullDescription = onShowFullDescription,
                             upFocusRequester = playButtonFocusRequester,
+                            onDownPressed = onSkipDownToEpisodes,
+                            onTruncationChanged = { descriptionTakesFocus = it },
                             onFocused = onHeroActionFocused,
                             modifier = Modifier
                                 .fillMaxWidth(0.6f)
@@ -324,6 +334,7 @@ private fun PlayButton(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
+    onDownPressed: (() -> Boolean)? = null,
     restoreFocusToken: Int = 0,
     onFocusRestored: () -> Unit = {}
 ) {
@@ -359,6 +370,13 @@ private fun PlayButton(
             }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
+                if (onDownPressed != null &&
+                    native.action == AndroidKeyEvent.ACTION_DOWN &&
+                    native.keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN &&
+                    onDownPressed()
+                ) {
+                    return@onPreviewKeyEvent true
+                }
                 if (enabled && onLongPress != null && native.action == AndroidKeyEvent.ACTION_DOWN) {
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
                         longPressTriggered = true
