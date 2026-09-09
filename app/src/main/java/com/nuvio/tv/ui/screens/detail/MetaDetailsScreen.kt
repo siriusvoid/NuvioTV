@@ -212,6 +212,8 @@ private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
 /** Long enough to read as a scroll, short enough that the row is reachable at D-pad speed. */
 private const val SKIP_TO_EPISODES_SCROLL_MS = 450
 
+private const val CAST_FADE_MS = 160
+
 
 private fun formatDetailYearRange(releaseInfo: String?): String? {
     if (releaseInfo.isNullOrBlank()) return null
@@ -1512,6 +1514,14 @@ private fun MetaDetailsContent(
     // usually not composed yet, so the requester has no target and focus does not move. The skip
     // below hands the job to the same restore path the player return uses. Item order is fixed:
     // hero, season tabs, episodes.
+    var seasonTabsFocused by remember { mutableStateOf(false) }
+    // The cast sits on screen when the season row takes focus, so it cannot be hidden without
+    // being seen going; faded is the least abrupt way for it to go.
+    val castSectionAlpha by animateFloatAsState(
+        targetValue = if (seasonTabsFocused) 0f else 1f,
+        animationSpec = tween(durationMillis = CAST_FADE_MS),
+        label = "castSectionAlpha"
+    )
     val showSeasonTabs = isSeries && seasons.isNotEmpty() &&
         !(seasons.size == 1 && meta.apiType.equals("other", ignoreCase = true))
     val showEpisodesRow = isSeries && seasons.isNotEmpty()
@@ -1953,7 +1963,11 @@ private fun MetaDetailsContent(
             // Season tabs and episodes for series
             if (showSeasonTabs) {
                 item(key = "season_tabs", contentType = "season_tabs") {
-                    Box(modifier = Modifier.bringIntoViewResponder(detailRowBringIntoViewResponder)) {
+                    Box(
+                        modifier = Modifier
+                            .bringIntoViewResponder(detailRowBringIntoViewResponder)
+                            .onFocusChanged { seasonTabsFocused = it.hasFocus }
+                    ) {
                         SeasonTabs(
                             seasons = seasons,
                             selectedSeason = selectedSeason,
@@ -2036,15 +2050,19 @@ private fun MetaDetailsContent(
         if (hasVisiblePeopleSection) {
                 if (hasVisiblePeopleTabs) {
                     item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
-                        PeopleSectionTabs(
-                            activeTab = activePeopleTab,
-                            tabs = visiblePeopleTabItems,
-                            upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
-                            ratingsDownFocusRequester = ratingsContentFocusRequester,
-                            onTabFocused = { tab ->
-                                activePeopleTab = tab
-                            }
-                        )
+                        // Faded rather than dropped from the list: removing the items shortened
+                        // the column, so the scroll clamped and jumped back on return.
+                        Box(modifier = Modifier.graphicsLayer { alpha = castSectionAlpha }) {
+                            PeopleSectionTabs(
+                                activeTab = activePeopleTab,
+                                tabs = visiblePeopleTabItems,
+                                upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
+                                ratingsDownFocusRequester = ratingsContentFocusRequester,
+                                onTabFocused = { tab ->
+                                    activePeopleTab = tab
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -2061,6 +2079,7 @@ private fun MetaDetailsContent(
 
                     Crossfade(
                         targetState = visiblePeopleSection,
+                        modifier = Modifier.graphicsLayer { alpha = castSectionAlpha },
                         animationSpec = tween(durationMillis = 160),
                         label = "peopleSectionSwitch"
                     ) { section ->
