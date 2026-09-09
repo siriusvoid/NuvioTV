@@ -1612,10 +1612,17 @@ private fun MetaDetailsContent(
         } else {
             castTabFocusRequester
         }
+    // No tabs with a single section, so target the row itself: its first item, then the one last used.
     val episodesDownFocusRequester = when {
         hasVisiblePeopleTabs -> activePeopleTabFocusRequester
-        activePeopleTab == PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
-        else -> null
+        !hasVisiblePeopleSection -> null
+        else -> when (visiblePeopleTabItems.first().tab) {
+            PeopleSectionTab.CAST -> castSectionFocusRequester
+            PeopleSectionTab.MORE_LIKE_THIS -> moreLikeSectionFocusRequester
+            PeopleSectionTab.TRAILER -> trailerSectionFocusRequester
+            PeopleSectionTab.COLLECTION -> collectionSectionFocusRequester
+            PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
+        }
     }
     val commentsUpFocusRequester = when {
         shouldSplitCollection && collection.isNotEmpty() -> collectionSectionFocusRequester

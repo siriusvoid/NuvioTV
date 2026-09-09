@@ -4,6 +4,7 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.background
@@ -37,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -351,6 +353,14 @@ fun EpisodesRow(
         )
     }
 
+    val rowCoroutineScope = rememberCoroutineScope()
+    // Requested a frame later, with retries, so focus waits for the section below to be wired up.
+    val onCardDownPressed: (() -> Boolean)? = downFocusRequester?.let { target ->
+        {
+            rowCoroutineScope.launch { target.requestFocusAfterFrames(frames = 1) }
+            true
+        }
+    }
     // Runs as soon as the row is built, while it's still below the screen edge on the skip.
     LaunchedEffect(restoreEpisodeId, dedupedEpisodes) {
         val targetId = restoreEpisodeId ?: return@LaunchedEffect
@@ -460,6 +470,7 @@ fun EpisodesRow(
                 downFocusRequester = downFocusRequester,
                 focusRequester = episodeFocusRequester,
                 isFocusEnabled = restoreEpisodeId.isNullOrBlank() || isRestoreTarget,
+                onDownPressed = onCardDownPressed,
                 onFocused = episodeOnFocused,
                 onFocusRestored = episodeOnFocusRestored
             )
@@ -552,6 +563,7 @@ private fun EpisodeCard(
     downFocusRequester: FocusRequester? = null,
     focusRequester: FocusRequester,
     isFocusEnabled: Boolean = true,
+    onDownPressed: (() -> Boolean)? = null,
     onFocused: (() -> Unit)? = null,
     onFocusRestored: (() -> Unit)? = null
 ) {
@@ -753,6 +765,13 @@ private fun EpisodeCard(
             }
             .onPreviewKeyEvent { event ->
                 val native = event.nativeKeyEvent
+                if (onDownPressed != null &&
+                    native.action == AndroidKeyEvent.ACTION_DOWN &&
+                    native.keyCode == AndroidKeyEvent.KEYCODE_DPAD_DOWN &&
+                    onDownPressed()
+                ) {
+                    return@onPreviewKeyEvent true
+                }
                 if (native.action == AndroidKeyEvent.ACTION_DOWN) {
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
                         longPressTriggered = true
