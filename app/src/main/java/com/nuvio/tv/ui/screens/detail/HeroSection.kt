@@ -44,6 +44,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -85,23 +86,35 @@ import java.util.Locale
 
 private const val MAX_VISIBLE_HERO_GENRES = 6
 
-private val HERO_ENTRANCE_RISE = 18.dp
+// Three beats 60ms apart across the 300ms entrance, 180ms each, so the last lands as it ends.
+private const val HERO_ENTRANCE_SPAN = 0.6f
 private const val HERO_LOGO_START = 0f
-private const val HERO_LOGO_SPAN = 0.55f
-private const val HERO_ACTIONS_START = 0.20f
-private const val HERO_ACTIONS_SPAN = 0.60f
+private const val HERO_ACTIONS_START = 0.2f
+private const val HERO_SYNOPSIS_START = 0.4f
+
+// Lower elements travel further, so the hero settles up from below rather than sliding on one rail.
+private val HERO_LOGO_RISE = 12.dp
+private val HERO_ACTIONS_RISE = 18.dp
+private val HERO_SYNOPSIS_RISE = 24.dp
+
+/** How much of an element's slice the fade takes; the rise keeps going after it lands. */
+private const val HERO_ENTRANCE_FADE_PORTION = 0.6f
 
 /** Fades and lifts one element over its slice of the entrance; progress is read in the draw phase. */
 private fun Modifier.heroEntrance(
     progress: () -> Float,
     start: Float,
-    span: Float,
     risePx: Float
 ): Modifier = graphicsLayer {
-    val raw = ((progress() - start) / span).coerceIn(0f, 1f)
-    val eased = NuvioMotion.tokens.easings.standard.transform(raw)
-    alpha = eased
-    translationY = risePx * (1f - eased)
+    val raw = ((progress() - start) / HERO_ENTRANCE_SPAN).coerceIn(0f, 1f)
+    // Opacity resolves early so text is readable while it settles; the rise runs on its own curve.
+    val fade = NuvioMotion.tokens.easings.standard
+        .transform((raw / HERO_ENTRANCE_FADE_PORTION).coerceIn(0f, 1f))
+    val rise = NuvioMotion.tokens.easings.emphasized.transform(raw)
+    // ModulateAlpha: group alpha would composite offscreen and clip button caps outside the column.
+    compositingStrategy = CompositingStrategy.ModulateAlpha
+    alpha = fade
+    translationY = risePx * (1f - rise)
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -170,7 +183,10 @@ fun HeroContentSection(
         animationSpec = tween(600),
         label = "logoHeight"
     )
-    val entranceRisePx = with(LocalDensity.current) { HERO_ENTRANCE_RISE.toPx() }
+    val entranceDensity = LocalDensity.current
+    val logoRisePx = with(entranceDensity) { HERO_LOGO_RISE.toPx() }
+    val actionsRisePx = with(entranceDensity) { HERO_ACTIONS_RISE.toPx() }
+    val synopsisRisePx = with(entranceDensity) { HERO_SYNOPSIS_RISE.toPx() }
 
     val logoBottomPadding by animateDpAsState(
         targetValue = if (isTrailerPlaying) NuvioTheme.spacing.xl else NuvioTheme.spacing.lg,
@@ -207,7 +223,7 @@ fun HeroContentSection(
                     modifier = Modifier
                         .height(logoHeight)
                         .fillMaxWidth(logoMaxWidth)
-                        .heroEntrance(heroEntranceProgress, HERO_LOGO_START, HERO_LOGO_SPAN, entranceRisePx)
+                        .heroEntrance(heroEntranceProgress, HERO_LOGO_START, logoRisePx)
                         .padding(bottom = logoBottomPadding),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.CenterStart
@@ -224,7 +240,7 @@ fun HeroContentSection(
                         style = MaterialTheme.typography.displayMedium,
                         color = NuvioTheme.colors.TextPrimary,
                         modifier = Modifier
-                            .heroEntrance(heroEntranceProgress, HERO_LOGO_START, HERO_LOGO_SPAN, entranceRisePx)
+                            .heroEntrance(heroEntranceProgress, HERO_LOGO_START, logoRisePx)
                             .padding(bottom = NuvioTheme.spacing.sm)
                     )
                 }
@@ -250,15 +266,13 @@ fun HeroContentSection(
                 enter = fadeIn(tween(NuvioMotion.tokens.durations.overlay)),
                 exit = fadeOut(tween(NuvioMotion.tokens.durations.overlay))
             ) {
-                Column(
-                    modifier = Modifier.heroEntrance(
-                        heroEntranceProgress,
-                        HERO_ACTIONS_START,
-                        HERO_ACTIONS_SPAN,
-                        entranceRisePx
-                    )
-                ) {
+                Column {
                     Row(
+                        modifier = Modifier.heroEntrance(
+                            heroEntranceProgress,
+                            HERO_ACTIONS_START,
+                            actionsRisePx
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -325,34 +339,43 @@ fun HeroContentSection(
 
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
-                    if (mdbListRatings?.isEmpty() == false) {
-                        MDBListRatingsRow(ratings = mdbListRatings)
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
+                    // The text block is one beat; a beat each would stretch the cascade past half a second.
+                    Column(
+                        modifier = Modifier.heroEntrance(
+                            heroEntranceProgress,
+                            HERO_SYNOPSIS_START,
+                            synopsisRisePx
+                        )
+                    ) {
+                        if (mdbListRatings?.isEmpty() == false) {
+                            MDBListRatingsRow(ratings = mdbListRatings)
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
-                    meta.description?.let { description ->
-                        SynopsisDescription(
-                            description = description,
-                            onShowFullDescription = onShowFullDescription,
-                            upFocusRequester = playButtonFocusRequester,
-                            onDownPressed = onSkipDownToEpisodes,
-                            onTruncationChanged = { descriptionTakesFocus = it },
-                            onFocused = onHeroActionFocused,
-                            modifier = Modifier
-                                .fillMaxWidth(0.6f)
-                                .padding(bottom = NuvioTheme.spacing.md)
+                        meta.description?.let { description ->
+                            SynopsisDescription(
+                                description = description,
+                                onShowFullDescription = onShowFullDescription,
+                                upFocusRequester = playButtonFocusRequester,
+                                onDownPressed = onSkipDownToEpisodes,
+                                onTruncationChanged = { descriptionTakesFocus = it },
+                                onFocused = onHeroActionFocused,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .padding(bottom = NuvioTheme.spacing.md)
+                            )
+                        }
+
+                        MetaInfoRow(
+                            meta = meta,
+                            hideImdbRating = hideMetaInfoImdb,
+                            showFullReleaseDate = showFullReleaseDate,
+                            tmdbRating = tmdbRating,
+                            hideParentalRating = hideParentalRating,
+                            hideGenres = hideGenres,
+                            hideExtraMetadata = hideExtraMetadata
                         )
                     }
-
-                    MetaInfoRow(
-                        meta = meta,
-                        hideImdbRating = hideMetaInfoImdb,
-                        showFullReleaseDate = showFullReleaseDate,
-                        tmdbRating = tmdbRating,
-                        hideParentalRating = hideParentalRating,
-                        hideGenres = hideGenres,
-                        hideExtraMetadata = hideExtraMetadata
-                    )
                 }
             }
         }

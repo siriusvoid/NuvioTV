@@ -1,5 +1,6 @@
 package com.nuvio.tv.ui.screens.detail
 
+import android.os.SystemClock
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
 
@@ -213,7 +214,19 @@ private fun resolveHeroPlaybackVideo(
 
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
 
-private const val HERO_ENTRANCE_DURATION_MS = 520
+private const val HERO_ENTRANCE_DURATION_MS = 300
+
+/** Starts at 70% of the screen crossfade, when it's ~94% opaque, instead of playing behind it. */
+private val HERO_ENTRANCE_DELAY_MS = (NuvioMotion.tokens.durations.medium * 0.7f).toLong()
+
+/** Items after the visible ones to build ahead: season tabs, episodes, people tabs and cast. */
+private const val DETAIL_ROWS_WARMUP_COUNT = 4
+
+/** Frames the invisible episode cards stay composed, enough for one of them to be drawn. */
+private const val EPISODE_CARDS_PREDRAW_FRAMES = 3
+
+/** What a first draw prepares on the GPU lasts for the process, so the predraw runs once. */
+private var episodeCardsPredrawn = false
 
 /** A held key repeats about every 50ms, which outruns the rows being built. */
 private const val DOWN_REPEAT_THROTTLE_MS = 120L
@@ -312,6 +325,8 @@ fun MetaDetailsScreen(
         contentLanguage: String?
     ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
 ) {
+    // Navigation entry, not meta arrival: a title shown via the skeleton is already past the crossfade.
+    val screenEnteredAtMs = remember { SystemClock.uptimeMillis() }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val posterCardCornerRadiusDp by viewModel.posterCardCornerRadiusDp.collectAsStateWithLifecycle()
     val effectiveAutoplayEnabled by viewModel.effectiveAutoplayEnabled.collectAsStateWithLifecycle(
@@ -659,6 +674,7 @@ fun MetaDetailsScreen(
                     modifier = Modifier.graphicsLayer {
                         alpha = playOnLoadReturnContentAlpha
                     },
+                    screenEnteredAtMs = screenEnteredAtMs,
                     heroBackdropUrl = heroBackdropUrl,
                     meta = meta,
                     detailReturnEpisodeFocusRequest = DetailReturnEpisodeFocusRequest(
@@ -978,6 +994,7 @@ fun MetaDetailsScreen(
 @Composable
 private fun MetaDetailsContent(
     modifier: Modifier = Modifier,
+    screenEnteredAtMs: Long,
     heroBackdropUrl: String? = null,
     meta: Meta,
     detailReturnEpisodeFocusRequest: DetailReturnEpisodeFocusRequest? = null,
