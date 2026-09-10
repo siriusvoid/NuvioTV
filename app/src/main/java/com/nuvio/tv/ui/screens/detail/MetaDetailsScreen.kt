@@ -93,6 +93,8 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.nuvio.tv.ui.util.backdropDecodeHeight
+import com.nuvio.tv.ui.util.backdropDecodeWidth
 import coil3.imageLoader
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
@@ -498,10 +500,10 @@ fun MetaDetailsScreen(
                         val localDensity = LocalDensity.current
                         val configuration = LocalConfiguration.current
                         val loadingBackdropWidthPx = remember(configuration, localDensity) {
-                            with(localDensity) { configuration.screenWidthDp.dp.roundToPx() }
+                            backdropDecodeWidth(with(localDensity) { configuration.screenWidthDp.dp.roundToPx() })
                         }
                         val loadingBackdropHeightPx = remember(configuration, localDensity) {
-                            with(localDensity) { configuration.screenHeightDp.dp.roundToPx() }
+                            backdropDecodeHeight(with(localDensity) { configuration.screenHeightDp.dp.roundToPx() })
                         }
                         val loadingBackdropRequest = remember(localContext, heroBackdropUrl, loadingBackdropWidthPx, loadingBackdropHeightPx) {
                             ImageRequest.Builder(localContext)
