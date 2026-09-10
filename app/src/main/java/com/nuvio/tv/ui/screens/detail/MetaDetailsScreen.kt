@@ -6,7 +6,9 @@ import com.nuvio.tv.ui.theme.NuvioMotion
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -208,6 +210,8 @@ private fun resolveHeroPlaybackVideo(
 }
 
 private const val USER_INTERACTION_DISPATCH_DEBOUNCE_MS = 120L
+
+private const val HERO_ENTRANCE_DURATION_MS = 520
 
 /** A held key repeats about every 50ms, which outruns the rows being built. */
 private const val DOWN_REPEAT_THROTTLE_MS = 120L
@@ -1878,6 +1882,17 @@ private fun MetaDetailsContent(
 
     // Always-composed bottom gradient alpha (avoids add/remove during scroll)
 
+    // Staged so the page doesn't land on one frame; held here so scrolling the hero away can't replay it.
+    val heroEntrance = remember(meta.id) { Animatable(0f) }
+    LaunchedEffect(meta.id) {
+        heroEntrance.snapTo(0f)
+        heroEntrance.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(HERO_ENTRANCE_DURATION_MS, easing = LinearEasing)
+        )
+    }
+    val heroEntranceProgress = remember(heroEntrance) { { heroEntrance.value } }
+
     Box(modifier = modifier.fillMaxSize()) {
         // Sticky background — backdrop or trailer
         BackdropLayer(
@@ -1971,7 +1986,8 @@ private fun MetaDetailsContent(
                             initialHeroFocusRequested = true
                             clearPendingRestore()
                         },
-                        onShowFullDescription = { showSynopsisOverlay = true }
+                        onShowFullDescription = { showSynopsisOverlay = true },
+                        heroEntranceProgress = heroEntranceProgress
                     )
                 }
             }
