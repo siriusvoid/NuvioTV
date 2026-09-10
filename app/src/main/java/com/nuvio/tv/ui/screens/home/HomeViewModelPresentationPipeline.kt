@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -491,6 +492,25 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
         ExternalMetaOutcome.Failed
     }
 
+/** Warms what the detail screen blocks on, unless a stored copy exists (existence, not freshness). */
+private fun HomeViewModel.prefetchDetailMeta(
+    scope: CoroutineScope,
+    item: MetaPreview,
+    warmEnrichment: Boolean
+) {
+    if (item.id in backgroundMetaPrefetchedIds) return
+    backgroundMetaPrefetchedIds.add(item.id)
+    scope.launch {
+        val alreadyStored = metaDetailsDiskCache.hasEntryFor(item.id, item.apiType)
+        if (alreadyStored) return@launch
+        if (warmEnrichment) warmFullTmdbEnrichment(item)
+        metaRepository.getMetaFromAllAddons(
+            type = item.apiType,
+            id = item.id
+        ).first { it !is NetworkResult.Loading }
+    }
+}
+
 /** Requests the combination the detail screen asks for, so it opens on a cache hit. */
 private fun HomeViewModel.warmFullTmdbEnrichment(item: MetaPreview) {
     if (!fullTmdbWarmedIds.add(item.id)) return
@@ -533,16 +553,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
             // Still prefetch full meta in background for instant detail screen.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                warmFullTmdbEnrichment(item)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = true)
             return
         }
     }
@@ -585,15 +596,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
         }
 
         // Before the enrichment await: the detail screen blocks on this meta, which needs none of it.
-        if (item.id !in backgroundMetaPrefetchedIds) {
-            backgroundMetaPrefetchedIds.add(item.id)
-            viewModelScope.launch {
-                metaRepository.getMetaFromAllAddons(
-                    type = item.apiType,
-                    id = item.id
-                ).first { it !is NetworkResult.Loading }
-            }
-        }
+        prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         try {
             // Launch TMDB and external meta addon fetch in parallel.
@@ -751,15 +754,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
             }
 
             // Background prefetch for detail screen cache.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         } finally {
             if (pendingAdjacentPrefetchItemId == item.id) {
