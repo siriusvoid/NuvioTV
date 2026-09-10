@@ -44,6 +44,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -83,6 +85,29 @@ import java.util.Locale
 
 private const val MAX_VISIBLE_HERO_GENRES = 6
 
+private val HERO_ENTRANCE_RISE = 18.dp
+private const val HERO_LOGO_START = 0f
+private const val HERO_LOGO_SPAN = 0.55f
+private const val HERO_ACTIONS_START = 0.20f
+private const val HERO_ACTIONS_SPAN = 0.60f
+
+/**
+ * Fades and lifts one element into place over its own slice of the hero entrance, so the
+ * page resolves in sequence instead of every element landing on the same frame. Progress is
+ * read inside the layer block, which keeps this to the draw phase.
+ */
+private fun Modifier.heroEntrance(
+    progress: () -> Float,
+    start: Float,
+    span: Float,
+    risePx: Float
+): Modifier = graphicsLayer {
+    val raw = ((progress() - start) / span).coerceIn(0f, 1f)
+    val eased = NuvioMotion.tokens.easings.standard.transform(raw)
+    alpha = eased
+    translationY = risePx * (1f - eased)
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HeroContentSection(
@@ -114,7 +139,9 @@ fun HeroContentSection(
     restorePlayFocusToken: Int = 0,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
-    onShowFullDescription: () -> Unit = {}
+    onShowFullDescription: () -> Unit = {},
+    /** Hoisted above the lazy list so scrolling the hero out of view cannot replay it. */
+    heroEntranceProgress: () -> Float = { 1f }
 ) {
     val context = LocalContext.current
     val logoModel = remember(context, meta.logo) {
@@ -147,6 +174,8 @@ fun HeroContentSection(
         animationSpec = tween(600),
         label = "logoHeight"
     )
+    val entranceRisePx = with(LocalDensity.current) { HERO_ENTRANCE_RISE.toPx() }
+
     val logoBottomPadding by animateDpAsState(
         targetValue = if (isTrailerPlaying) NuvioTheme.spacing.xl else NuvioTheme.spacing.lg,
         animationSpec = tween(600),
@@ -182,6 +211,7 @@ fun HeroContentSection(
                     modifier = Modifier
                         .height(logoHeight)
                         .fillMaxWidth(logoMaxWidth)
+                        .heroEntrance(heroEntranceProgress, HERO_LOGO_START, HERO_LOGO_SPAN, entranceRisePx)
                         .padding(bottom = logoBottomPadding),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.CenterStart
@@ -197,7 +227,9 @@ fun HeroContentSection(
                         text = meta.name,
                         style = MaterialTheme.typography.displayMedium,
                         color = NuvioTheme.colors.TextPrimary,
-                        modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
+                        modifier = Modifier
+                            .heroEntrance(heroEntranceProgress, HERO_LOGO_START, HERO_LOGO_SPAN, entranceRisePx)
+                            .padding(bottom = NuvioTheme.spacing.sm)
                     )
                 }
             }
@@ -222,7 +254,14 @@ fun HeroContentSection(
                 enter = fadeIn(tween(NuvioMotion.tokens.durations.overlay)),
                 exit = fadeOut(tween(NuvioMotion.tokens.durations.overlay))
             ) {
-                Column {
+                Column(
+                    modifier = Modifier.heroEntrance(
+                        heroEntranceProgress,
+                        HERO_ACTIONS_START,
+                        HERO_ACTIONS_SPAN,
+                        entranceRisePx
+                    )
+                ) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                         verticalAlignment = Alignment.CenterVertically
