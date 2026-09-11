@@ -1,9 +1,9 @@
 package com.nuvio.tv.ui.screens.detail
 
-import android.os.SystemClock
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -80,7 +81,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.nuvio.tv.ui.util.localizedGenreLabel
 import com.nuvio.tv.ui.util.recompositionHighlighter
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1120,8 +1120,8 @@ private fun MetaDetailsContent(
             episodesForSeason = episodesForSeason
         )
     }
-    val nestedPrefetchStrategy = remember { LazyListPrefetchStrategy(nestedPrefetchItemCount = 2) }
-    val listState = rememberLazyListState(prefetchStrategy = nestedPrefetchStrategy)
+    val rowsPrefetchStrategy = remember { DetailRowsPrefetchStrategy() }
+    val listState = rememberLazyListState(prefetchStrategy = rowsPrefetchStrategy)
     // Suppress auto-scroll when hero buttons get focus
     val heroNoScrollResponder = remember {
         object : BringIntoViewResponder {
@@ -1170,7 +1170,13 @@ private fun MetaDetailsContent(
     val coroutineScope = rememberCoroutineScope()
     // The skip borrows the player-return restore but not its stillness, so it can settle at the end.
     var skipRestoreActive by remember { mutableStateOf(false) }
-    val suppressDetailRowRelocation = pendingRestoreType == RestoreTarget.EPISODE && !skipRestoreActive
+    // Restore state is read through derived values: a write recomposes only where a result changes.
+    val suppressDetailRowRelocation = remember {
+        derivedStateOf { pendingRestoreType == RestoreTarget.EPISODE && !skipRestoreActive }
+    }.value
+    val heroRestoreFocusToken by remember {
+        derivedStateOf { if (pendingRestoreType == RestoreTarget.HERO) restoreFocusToken else 0 }
+    }
     val detailRowBringIntoViewResponder = remember(suppressDetailRowRelocation) {
         object : BringIntoViewResponder {
             override fun calculateRectForParent(localRect: Rect): Rect {
@@ -1518,22 +1524,25 @@ private fun MetaDetailsContent(
         byEpisodeId.keys.retainAll(episodesForSeason.map { it.id }.toSet())
         byEpisodeId
     }
-    val seasonDownEpisodeId = remember(selectedSeason, episodesForSeason, lastFocusedEpisodeIdBySeason[selectedSeason], nextToWatch, defaultSeriesVideo, pendingRestoreType, pendingRestoreEpisodeId) {
-        val nextEpisodeId = if (pendingRestoreType == RestoreTarget.EPISODE) {
-            null
-        } else {
-            nextToWatch?.nextVideoId
-                ?: nextToWatch?.let { ntw -> episodesForSeason.firstOrNull { it.season == ntw.nextSeason && it.episode == ntw.nextEpisode }?.id }
-                ?: defaultSeriesVideo?.id?.takeIf { defaultId -> episodesForSeason.any { it.id == defaultId } }
+    val seasonDownEpisodeIdState = remember(selectedSeason, episodesForSeason, lastFocusedEpisodeIdBySeason, nextToWatch, defaultSeriesVideo) {
+        derivedStateOf {
+            val nextEpisodeId = if (pendingRestoreType == RestoreTarget.EPISODE) {
+                null
+            } else {
+                nextToWatch?.nextVideoId
+                    ?: nextToWatch?.let { ntw -> episodesForSeason.firstOrNull { it.season == ntw.nextSeason && it.episode == ntw.nextEpisode }?.id }
+                    ?: defaultSeriesVideo?.id?.takeIf { defaultId -> episodesForSeason.any { it.id == defaultId } }
+            }
+            val preferredEpisodeId = lastFocusedEpisodeIdBySeason[selectedSeason]
+                ?: nextEpisodeId?.takeIf { episodesForSeason.any { ep -> ep.id == it } }
+            preferredEpisodeId?.takeIf { id -> episodesForSeason.any { it.id == id } }
+                ?: episodesForSeason.firstOrNull()?.id
         }
-        val preferredEpisodeId = lastFocusedEpisodeIdBySeason[selectedSeason]
-            ?: nextEpisodeId?.takeIf { episodesForSeason.any { ep -> ep.id == it } }
-        preferredEpisodeId?.takeIf { id -> episodesForSeason.any { it.id == id } }
-            ?: episodesForSeason.firstOrNull()?.id
     }
 
-    val seasonDownFocusRequester = remember(seasonDownEpisodeId, seasonEpisodeFocusRequesters) {
-        seasonDownEpisodeId?.let { seasonEpisodeFocusRequesters[it] }
+    // Read inside the rows that use it, so a change recomposes those rows, not the page.
+    val seasonDownFocusRequester by remember(seasonDownEpisodeIdState, seasonEpisodeFocusRequesters) {
+        derivedStateOf { seasonDownEpisodeIdState.value?.let { seasonEpisodeFocusRequesters[it] } }
     }
 
     var seasonTabsFocused by remember { mutableStateOf(false) }
@@ -1555,7 +1564,7 @@ private fun MetaDetailsContent(
     // focusProperties down can't reach the unbuilt episodes row, so the skip uses the player-return restore.
     val skipDownToEpisodes: (() -> Boolean)? = if (skipSeasonsGoingDown && showEpisodesRow) {
         {
-            val episodeId = seasonDownEpisodeId
+            val episodeId = seasonDownEpisodeIdState.value
             when {
                 episodeId == null -> false
                 // Held keys repeat, and restarting the scroll on each repeat crawls.
@@ -1647,7 +1656,8 @@ private fun MetaDetailsContent(
             PeopleSectionTab.RATINGS -> ratingsContentFocusRequester
         }
     }
-    val commentsUpFocusRequester = when {
+    // A function, so the season down target is read by the comments row rather than the page.
+    fun commentsUpFocusRequester() = when {
         shouldSplitCollection && collection.isNotEmpty() -> collectionSectionFocusRequester
         hasVisiblePeopleSection -> when (activePeopleTab) {
             PeopleSectionTab.CAST -> castSectionFocusRequester
@@ -1671,14 +1681,20 @@ private fun MetaDetailsContent(
     }
 
     // Switch to the correct people tab when restoring focus after navigation
-    LaunchedEffect(restoreFocusToken, pendingRestoreType) {
-        if (restoreFocusToken <= 0 || pendingRestoreType == null) return@LaunchedEffect
-        val targetTab = when (pendingRestoreType) {
-            RestoreTarget.MORE_LIKE_THIS -> PeopleSectionTab.MORE_LIKE_THIS
-            RestoreTarget.CAST_MEMBER -> PeopleSectionTab.CAST
-            else -> null
+    val peopleTabRestore by remember {
+        derivedStateOf {
+            val targetTab = when (pendingRestoreType) {
+                RestoreTarget.MORE_LIKE_THIS -> PeopleSectionTab.MORE_LIKE_THIS
+                RestoreTarget.CAST_MEMBER -> PeopleSectionTab.CAST
+                else -> null
+            }
+            // The token rides along so a second restore to the same tab still re-runs the effect.
+            if (restoreFocusToken <= 0 || targetTab == null) null else restoreFocusToken to targetTab
         }
-        if (targetTab != null && targetTab in visiblePeopleTabsList && activePeopleTab != targetTab) {
+    }
+    LaunchedEffect(peopleTabRestore) {
+        val targetTab = peopleTabRestore?.second ?: return@LaunchedEffect
+        if (targetTab in visiblePeopleTabsList && activePeopleTab != targetTab) {
             activePeopleTab = targetTab
         }
     }
@@ -1749,18 +1765,16 @@ private fun MetaDetailsContent(
         listState.animateScrollToItem(commentsItemIndex)
     }
 
-    LaunchedEffect(
-        pendingRestoreType,
-        pendingRestoreEpisodeId,
-        initialHeroFocusRequested,
-        isTrailerPlaying
-    ) {
-        if (
+    // Stays false once the hero has had focus, so later restores leave this key alone.
+    val awaitingInitialHeroFocus by remember(meta.id) {
+        derivedStateOf {
             !initialHeroFocusRequested &&
-            pendingRestoreType == null &&
-            pendingRestoreEpisodeId == null &&
-            !isTrailerPlaying
-        ) {
+                pendingRestoreType == null &&
+                pendingRestoreEpisodeId == null
+        }
+    }
+    LaunchedEffect(awaitingInitialHeroFocus, isTrailerPlaying) {
+        if (awaitingInitialHeroFocus && !isTrailerPlaying) {
             repeat(3) {
                 if (initialHeroFocusRequested) return@repeat
                 heroPlayFocusRequester.requestFocusAfterFrames()
@@ -1903,20 +1917,49 @@ private fun MetaDetailsContent(
 
     // Staged so the page doesn't land on one frame; held here so scrolling the hero away can't replay it.
     val heroEntrance = remember(meta.id) { Animatable(0f) }
+    var predrawEpisodeCards by remember(meta.id) { mutableStateOf(false) }
+    val canPredrawEpisodeCards by rememberUpdatedState(showEpisodesRow && episodesForSeason.isNotEmpty())
     LaunchedEffect(meta.id) {
         heroEntrance.snapTo(0f)
+        val remainingDelayMs = HERO_ENTRANCE_DELAY_MS - (SystemClock.uptimeMillis() - screenEnteredAtMs)
         heroEntrance.animateTo(
             targetValue = 1f,
-            animationSpec = tween(HERO_ENTRANCE_DURATION_MS, easing = LinearEasing)
+            animationSpec = tween(
+                durationMillis = HERO_ENTRANCE_DURATION_MS,
+                delayMillis = remainingDelayMs.coerceAtLeast(0L).toInt(),
+                easing = LinearEasing
+            )
         )
+        // The page is at rest now, so building rows costs it no frames.
+        rowsPrefetchStrategy.warmUp(listState.layoutInfo, DETAIL_ROWS_WARMUP_COUNT)
+        // A card's first draw is several times its later ones; doing it now keeps it out of the jump.
+        if (!episodeCardsPredrawn && canPredrawEpisodeCards &&
+            listState.firstVisibleItemIndex == 0 && !listState.isScrollInProgress
+        ) {
+            predrawEpisodeCards = true
+            repeat(EPISODE_CARDS_PREDRAW_FRAMES) { withFrameNanos { } }
+            predrawEpisodeCards = false
+            episodeCardsPredrawn = true
+        }
     }
     val heroEntranceProgress = remember(heroEntrance) { { heroEntrance.value } }
 
     Box(modifier = modifier.fillMaxSize()) {
+        if (predrawEpisodeCards && canPredrawEpisodeCards) {
+            EpisodeCardsPredraw(
+                episodes = episodesForSeason,
+                landingEpisodeId = nextToWatch?.nextVideoId ?: defaultSeriesVideo?.id,
+                episodeProgressMap = episodeProgressMap,
+                episodeRatings = visibleEpisodeImdbRatings,
+                watchedEpisodes = watchedEpisodes,
+                blurUnwatchedEpisodes = blurUnwatchedEpisodes,
+                episodeOptionsOverlayStyle = episodeOptionsOverlayStyle,
+                posterCardCornerRadiusDp = posterCardCornerRadiusDp,
+            )
+        }
         // Sticky background — backdrop or trailer
         BackdropLayer(
             backdropRequest = backdropRequest,
-            heroBackdropRequest = if (shouldShowSeedBackdropUnderlay) heroBackdropRequest else null,
             trailerUrl = trailerUrl,
             trailerAudioUrl = trailerAudioUrl,
             isTrailerPlaying = isTrailerPlaying,
@@ -1998,8 +2041,7 @@ private fun MetaDetailsContent(
                                 clearPendingRestore()
                             }
                         },
-                        restorePlayFocusToken = (if (pendingRestoreType == RestoreTarget.HERO) restoreFocusToken else 0) +
-                                restorePlayFocusAfterTrailerBackToken,
+                        restorePlayFocusToken = heroRestoreFocusToken + restorePlayFocusAfterTrailerBackToken,
                         onPlayFocusRestored = {
                             onPlayButtonFocused()
                             initialHeroFocusRequested = true
@@ -2094,28 +2136,28 @@ private fun MetaDetailsContent(
                             }
                         )
                     }
+                }
             }
-        }
 
-        // Cast / More like this section
-        if (hasVisiblePeopleSection) {
-                if (hasVisiblePeopleTabs) {
-                    item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
-                        // Faded, not removed: removing the items would shorten the column and jump the scroll on
-                        // return.
-                        Box(modifier = Modifier.graphicsLayer { alpha = castSectionAlpha }) {
-                            PeopleSectionTabs(
-                                activeTab = activePeopleTab,
-                                tabs = visiblePeopleTabItems,
-                                upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
-                                ratingsDownFocusRequester = ratingsContentFocusRequester,
-                                onTabFocused = { tab ->
-                                    activePeopleTab = tab
-                                }
-                            )
+            // Cast / More like this section
+            if (hasVisiblePeopleSection) {
+                    if (hasVisiblePeopleTabs) {
+                        item(key = "cast_more_like_tabs", contentType = "horizontal_row") {
+                            // Faded, not removed: removing the items would shorten the column and jump the scroll on
+                            // return.
+                            Box(modifier = Modifier.graphicsLayer { alpha = castSectionAlpha }) {
+                                PeopleSectionTabs(
+                                    activeTab = activePeopleTab,
+                                    tabs = visiblePeopleTabItems,
+                                    upFocusRequester = seasonDownFocusRequester ?: heroPlayFocusRequester,
+                                    ratingsDownFocusRequester = ratingsContentFocusRequester,
+                                    onTabFocused = { tab ->
+                                        activePeopleTab = tab
+                                    }
+                                )
+                            }
                         }
                     }
-                }
 
                 item(key = "cast_or_more_like", contentType = "horizontal_row") {
                     val visiblePeopleTabsList = visiblePeopleTabItems.map { it.tab }
@@ -2199,7 +2241,7 @@ private fun MetaDetailsContent(
                                     }
                                 )
                             }
-                            
+                        
                             PeopleSectionTab.COLLECTION -> {
                                 CollectionSection(
                                     items = collection,
@@ -2298,7 +2340,7 @@ private fun MetaDetailsContent(
                         isLoadingMore = isCommentsLoadingMore,
                         canLoadMore = canLoadMoreComments,
                         error = commentsError,
-                        upFocusRequester = commentsUpFocusRequester,
+                        upFocusRequester = commentsUpFocusRequester(),
                         entryFocusToken = commentsEntryFocusToken,
                         onEntryFocusHandled = {
                             commentsEntryFocusToken = 0
