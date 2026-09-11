@@ -581,16 +581,28 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             if (!externalEnrichmentOutstanding(item.id)) {
                 if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
                 // Still prefetch full meta in background for instant detail screen.
-                if (item.id !in backgroundMetaPrefetchedIds) {
-                    backgroundMetaPrefetchedIds.add(item.id)
-                    warmFullTmdbEnrichment(item)
-                    launch {
-                        metaRepository.getMetaFromAllAddons(
-                            type = item.apiType,
-                            id = item.id
-                        ).first { it !is NetworkResult.Loading }
-                    }
-                }
+                prefetchDetailMeta(this@launch, item, warmEnrichment = true)
+                return@launch
+            }
+        }
+
+        // A stored copy fills the hero first; only one needing a refresh falls through to the fetches below.
+        val storedDetails = runCatching {
+            metaDetailsDiskCache.read(
+                metaDetailsDiskCache.keyFor(
+                    itemId = item.id,
+                    itemType = item.apiType,
+                    preferExternalMetaAddon = layoutPreferenceDataStore.preferExternalMetaAddonDetail.value,
+                    tmdbSettings = currentTmdbSettings
+                )
+            )
+        }.getOrNull()
+        if (storedDetails != null) {
+            // Language dropped: rows never had it, and it would add a chip only for stored titles.
+            updateCatalogItemWithMeta(item.id, storedDetails.meta.copy(language = null))
+            if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+            if (!storedDetails.needsRefresh()) {
+                prefetchedExternalMetaIds.add(item.id)
                 return@launch
             }
         }
