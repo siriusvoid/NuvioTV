@@ -80,6 +80,7 @@ class HomeViewModel @Inject constructor(
     internal val trailerService: TrailerService,
     internal val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     internal val cwEnrichmentCache: ContinueWatchingEnrichmentCache,
+    internal val metaDetailsDiskCache: com.nuvio.tv.data.local.MetaDetailsDiskCache,
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
     internal val tvRecommendationManager: TvRecommendationManager,
     internal val localLibraryGateway: com.nuvio.tv.domain.repository.LocalLibraryGateway

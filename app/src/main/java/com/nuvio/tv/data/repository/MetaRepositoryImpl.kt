@@ -3,6 +3,7 @@ package com.nuvio.tv.data.repository
 import android.content.Context
 import android.util.Log
 import com.nuvio.tv.core.network.NetworkResult
+import com.nuvio.tv.data.local.MetaDetailsDiskCache
 import com.nuvio.tv.data.mapper.toDomain
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
@@ -36,7 +37,8 @@ class MetaRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: AddonApi,
     private val addonRepository: AddonRepository,
-    private val localLibraryGateway: LocalLibraryGateway
+    private val localLibraryGateway: LocalLibraryGateway,
+    private val metaDetailsDiskCache: MetaDetailsDiskCache
 ) : MetaRepository {
     companion object {
         private const val TAG = "MetaRepository"
@@ -798,6 +800,8 @@ class MetaRepositoryImpl @Inject constructor(
     }
 
     override fun clearCache() {
+        // The detail screen's composed copies are built from this data, so they go with it.
+        metaDetailsDiskCache.clearAsync()
         metaCache.clear()
         addonMetaCache.clear()
         primaryAddonMetaCache.clear()

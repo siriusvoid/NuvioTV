@@ -12,8 +12,10 @@ import com.nuvio.tv.core.tmdb.isGeneratedTmdbEpisodeTitle
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
+import com.nuvio.tv.data.local.CachedMetaDetails
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.MDBListSettingsDataStore
+import com.nuvio.tv.data.local.MetaDetailsDiskCache
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.data.local.TraktAuthDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
@@ -68,12 +70,16 @@ import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.nuvio.tv.BuildConfig
 import com.nuvio.tv.R
 import com.nuvio.tv.core.build.AppFeaturePolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 private const val TAG = "MetaDetailsViewModel"
+
+/** Long enough for the after-paint episode merge to land in the same write. */
+private const val META_CACHE_WRITE_DELAY_MS = 600L
 
 @HiltViewModel
 class MetaDetailsViewModel @Inject constructor(
@@ -98,6 +104,7 @@ class MetaDetailsViewModel @Inject constructor(
     private val playerSettingsDataStore: PlayerSettingsDataStore,
     private val profileManager: ProfileManager,
     private val metaDetailsSessionState: MetaDetailsSessionState,
+    private val metaDetailsDiskCache: MetaDetailsDiskCache,
     private val watchedSeriesStateHolder: com.nuvio.tv.data.local.WatchedSeriesStateHolder,
     val posterOptions: com.nuvio.tv.ui.components.posteroptions.PosterOptionsController,
     savedStateHandle: SavedStateHandle
@@ -108,6 +115,20 @@ class MetaDetailsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(MetaDetailsUiState())
     val uiState: StateFlow<MetaDetailsUiState> = _uiState.asStateFlow()
+
+    /** Null until the settings this screen was opened under are known. */
+    private var metaCacheKey: String? = null
+
+    /** Cleared when a degraded meta reaches the screen, so it is never the copy that persists. */
+    private var metaCacheWritable = true
+
+    // Carried on the cached entry so a cache hit can restore the collection row without
+    // re-running enrichment for the two values it needs.
+    private var cachedCollectionId: Int? = null
+    private var cachedCollectionName: String? = null
+
+    /** The exact object read from disk, so it is never written back with a fresher timestamp. */
+    private var metaLoadedFromCache: Meta? = null
 
     private val _posterCardCornerRadiusDp = MutableStateFlow(12)
     val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()
@@ -174,6 +195,7 @@ class MetaDetailsViewModel @Inject constructor(
         observeHideExtraMetadata()
         observeHideActorNames()
         observeHideUnreleasedContent()
+        observeMetaForCaching()
         loadMeta()
     }
 
@@ -747,7 +769,40 @@ class MetaDetailsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Stores whatever the screen ends up showing. Episode names are merged after the first paint,
+     * so writing at fetch time would persist the addon's titles instead of TMDB's — waiting for
+     * the state to settle stores the copy the user actually sees.
+     */
+    private fun observeMetaForCaching() {
+        viewModelScope.launch {
+            _uiState
+                .map { it.meta }
+                // Meta is only ever replaced wholesale, so identity is the cheap correct test.
+                // Structural equality would walk the whole episode list on every state change.
+                .distinctUntilChanged { previous, next -> previous === next }
+                .collectLatest { meta ->
+                    val key = metaCacheKey ?: return@collectLatest
+                    if (meta == null || !metaCacheWritable) return@collectLatest
+                    if (meta === metaLoadedFromCache) return@collectLatest
+                    // An addon that answered with no episodes failed; it is not a movie.
+                    if (meta.videos.isEmpty() && meta.apiType.lowercase() in listOf("series", "tv")) {
+                        return@collectLatest
+                    }
+                    delay(META_CACHE_WRITE_DELAY_MS)
+                    metaDetailsDiskCache.write(
+                        key = key,
+                        meta = meta,
+                        tmdbRating = _uiState.value.tmdbRating,
+                        collectionId = cachedCollectionId,
+                        collectionName = cachedCollectionName
+                    )
+                }
+        }
+    }
+
     private fun loadMeta() {
+        metaCacheWritable = true
         viewModelScope.launch {
             cancelCommentsRequests()
             val mdbListSettings = mdbListSettingsDataStore.settings.first()
@@ -785,74 +840,109 @@ class MetaDetailsViewModel @Inject constructor(
                 )
             }
 
-            val metaLookupId = resolveMetaLookupId(itemId = itemId, itemType = itemType)
-            // Update effective content ID as early as possible so watch-progress
-            // observers use the canonical (usually IMDB) ID, not the navigation ID.
-            if (metaLookupId != itemId) {
-                _effectiveContentId.value = metaLookupId
-            }
             val preferExternal = layoutPreferenceDataStore.preferExternalMetaAddonDetail.first()
+            val cacheKey = metaDetailsDiskCache.keyFor(
+                itemId = itemId,
+                itemType = itemType,
+                preferExternalMetaAddon = preferExternal,
+                tmdbSettings = tmdbSettingsDataStore.settings.first()
+            )
+            metaCacheKey = cacheKey
 
-            if (preferExternal) {
-                // 1) Try meta addons first
+            val cached = metaDetailsDiskCache.read(cacheKey)
+            if (BuildConfig.IS_DEBUG_BUILD) {
+                val outcome = when {
+                    cached == null -> "miss"
+                    cached.needsRefresh() -> "hit, refreshing"
+                    else -> "hit, no fetch"
+                }
+                Log.d(TAG, "Meta cache $outcome for $itemId (status=${cached?.meta?.status})")
+            }
+            if (cached != null) {
+                applyCachedMeta(cached)
+                // A finished title cannot gain episodes, so it is served without touching the network.
+                if (!cached.needsRefresh()) return@launch
+            }
+
+            fetchMeta(preferExternal = preferExternal, silent = cached != null)
+        }
+    }
+
+    /**
+     * @param silent a cached copy is already on screen, so the fetch must not raise the skeleton
+     *   and must leave that copy in place if it fails.
+     */
+    private suspend fun fetchMeta(preferExternal: Boolean, silent: Boolean) {
+        val metaLookupId = resolveMetaLookupId(itemId = itemId, itemType = itemType)
+        // Update effective content ID as early as possible so watch-progress
+        // observers use the canonical (usually IMDB) ID, not the navigation ID.
+        if (metaLookupId != itemId) {
+            _effectiveContentId.value = metaLookupId
+        }
+
+        if (preferExternal) {
+            // 1) Try meta addons first
+            metaRepository.getMetaFromAllAddons(type = itemType, id = metaLookupId).collect { result ->
+                when (result) {
+                    is NetworkResult.Success -> {
+                        applyMetaWithEnrichment(result.data)
+                    }
+                    is NetworkResult.Error -> {
+                        // 2) Fallback: try originating addon if meta addons failed
+                        val preferred = preferredAddonBaseUrl?.takeIf { it.isNotBlank() }
+                        val preferredMeta: Meta? = preferred?.let { baseUrl ->
+                            when (val fallbackResult = metaRepository.getMeta(addonBaseUrl = baseUrl, type = itemType, id = metaLookupId)
+                                .first { it !is NetworkResult.Loading }) {
+                                is NetworkResult.Success -> fallbackResult.data
+                                else -> null
+                            }
+                        }
+
+                        if (preferredMeta != null) {
+                            applyMetaWithEnrichment(preferredMeta)
+                        } else if (silent) {
+                            // Keep the cached screen rather than downgrading it to the TMDB-only
+                            // fallback, which carries no episodes.
+                            Unit
+                        } else if (tryApplyTmdbFallbackMeta()) {
+                            Unit
+                        } else {
+                            val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
+                            _uiState.update { it.copy(isLoading = false, error = errorMsg) }
+                        }
+                    }
+                    NetworkResult.Loading -> {
+                        if (!silent) _uiState.update { it.copy(isLoading = true) }
+                    }
+                }
+            }
+        } else {
+            // Original: prefer catalog addon
+            val preferred = preferredAddonBaseUrl?.takeIf { it.isNotBlank() }
+            val preferredMeta: Meta? = preferred?.let { baseUrl ->
+                when (val result = metaRepository.getMeta(addonBaseUrl = baseUrl, type = itemType, id = metaLookupId)
+                    .first { it !is NetworkResult.Loading }) {
+                    is NetworkResult.Success -> result.data
+                    else -> null
+                }
+            }
+
+            if (preferredMeta != null) {
+                applyMetaWithEnrichment(preferredMeta)
+            } else {
                 metaRepository.getMetaFromAllAddons(type = itemType, id = metaLookupId).collect { result ->
                     when (result) {
                         is NetworkResult.Success -> {
                             applyMetaWithEnrichment(result.data)
                         }
                         is NetworkResult.Error -> {
-                            // 2) Fallback: try originating addon if meta addons failed
-                            val preferred = preferredAddonBaseUrl?.takeIf { it.isNotBlank() }
-                            val preferredMeta: Meta? = preferred?.let { baseUrl ->
-                                when (val fallbackResult = metaRepository.getMeta(addonBaseUrl = baseUrl, type = itemType, id = metaLookupId)
-                                    .first { it !is NetworkResult.Loading }) {
-                                    is NetworkResult.Success -> fallbackResult.data
-                                    else -> null
-                                }
-                            }
-
-                            if (preferredMeta != null) {
-                                applyMetaWithEnrichment(preferredMeta)
-                            } else if (tryApplyTmdbFallbackMeta()) {
-                                Unit
-                            } else {
+                            if (!silent && !tryApplyTmdbFallbackMeta()) {
                                 val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
                                 _uiState.update { it.copy(isLoading = false, error = errorMsg) }
                             }
                         }
                         NetworkResult.Loading -> {
-                            _uiState.update { it.copy(isLoading = true) }
-                        }
-                    }
-                }
-            } else {
-                // Original: prefer catalog addon
-                val preferred = preferredAddonBaseUrl?.takeIf { it.isNotBlank() }
-                val preferredMeta: Meta? = preferred?.let { baseUrl ->
-                    when (val result = metaRepository.getMeta(addonBaseUrl = baseUrl, type = itemType, id = metaLookupId)
-                        .first { it !is NetworkResult.Loading }) {
-                        is NetworkResult.Success -> result.data
-                        else -> null
-                    }
-                }
-
-                if (preferredMeta != null) {
-                    applyMetaWithEnrichment(preferredMeta)
-                } else {
-                    metaRepository.getMetaFromAllAddons(type = itemType, id = metaLookupId).collect { result ->
-                        when (result) {
-                            is NetworkResult.Success -> {
-                                applyMetaWithEnrichment(result.data)
-                            }
-                            is NetworkResult.Error -> {
-                                if (!tryApplyTmdbFallbackMeta()) {
-                                    val errorMsg = buildMetaLoadErrorMessage(result.message, metaLookupId)
-                                    _uiState.update { it.copy(isLoading = false, error = errorMsg) }
-                                }
-                            }
-                            NetworkResult.Loading -> {
-                                _uiState.update { it.copy(isLoading = true) }
-                            }
+                            if (!silent) _uiState.update { it.copy(isLoading = true) }
                         }
                     }
                 }
@@ -909,6 +999,8 @@ class MetaDetailsViewModel @Inject constructor(
             // path would smuggle TMDB trailers in unconditionally.
             trailers = if (settings.useTrailers) enrichment.trailers else emptyList()
         )
+        // Carries no episodes, so caching it would give a series a permanently empty list.
+        metaCacheWritable = false
         applyMetaWithEnrichment(meta)
         return true
     }
@@ -1015,7 +1107,35 @@ class MetaDetailsViewModel @Inject constructor(
         // Fire all independent async jobs immediately — they run in parallel.
         loadMoreLikeThisAsync(meta)
         val enriched = enrichMeta(meta)
+        applyEnrichedMeta(enriched, skipEpisodeEnrichment = false)
+    }
 
+    /**
+     * Replays what [enrichMeta] would have produced, from disk. The composed meta already carries
+     * the merged episode names, so the only TMDB work left is the collection row, which is fetched
+     * separately anyway.
+     */
+    private suspend fun applyCachedMeta(cached: CachedMetaDetails) {
+        val meta = cached.meta
+        metaLoadedFromCache = meta
+        loadMoreLikeThisAsync(meta)
+        cachedCollectionId = cached.collectionId
+        cachedCollectionName = cached.collectionName
+        if (cached.tmdbRating != null) {
+            _uiState.update { it.copy(tmdbRating = cached.tmdbRating) }
+        }
+        val collectionId = cached.collectionId
+        if (collectionId != null) {
+            loadCollectionAsync(
+                collectionId = collectionId,
+                collectionName = cached.collectionName,
+                settings = tmdbSettingsDataStore.settings.first()
+            )
+        }
+        applyEnrichedMeta(meta, skipEpisodeEnrichment = true)
+    }
+
+    private suspend fun applyEnrichedMeta(enriched: Meta, skipEpisodeEnrichment: Boolean) {
         syncEffectiveContentId(enriched)
         val cachedNextToWatch = metaDetailsSessionState.getNextToWatch(
             profileId = profileManager.activeProfileId.value,
@@ -1052,7 +1172,7 @@ class MetaDetailsViewModel @Inject constructor(
         updateNextToWatch(precomputedNextToWatch)
 
         // Episode ratings, episode enrichment and MDBList are independent — launch without waiting.
-        loadEpisodeEnrichmentAsync(enriched)
+        if (!skipEpisodeEnrichment) loadEpisodeEnrichmentAsync(enriched)
         loadEpisodeRatingsAsync(enriched)
         viewModelScope.launch { loadMDBListRatings(enriched) }
     }
@@ -1705,6 +1825,8 @@ class MetaDetailsViewModel @Inject constructor(
         }
 
         if (enrichment?.collectionId != null) {
+            cachedCollectionId = enrichment.collectionId
+            cachedCollectionName = enrichment.collectionName
             loadCollectionAsync(enrichment.collectionId, enrichment.collectionName, settings)
         }
 

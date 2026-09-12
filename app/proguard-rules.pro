@@ -41,6 +41,8 @@
 # Keep all DTO classes used with Moshi/Retrofit
 -keep class com.nuvio.tv.data.remote.dto.** { *; }
 -keep class com.nuvio.tv.domain.model.** { *; }
+# Reflectively serialized by the on-disk detail metadata cache
+-keep class com.nuvio.tv.data.local.CachedMetaEnvelope { *; }
 
 # ── Kotlin ─────────────────────────────────────────────────────────────────────
 -keepattributes *Annotation*

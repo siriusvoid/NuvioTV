@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -492,6 +493,30 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
     }
 
 /**
+ * Warms what the detail screen blocks on, unless that screen already has a stored copy of this
+ * title — then it opens from disk and everything requested here would be a round trip nothing
+ * reads. Existence is the test, not freshness: a stale copy is refreshed by the detail screen
+ * itself, and the check answers from a directory listing rather than reading the copy.
+ */
+private fun HomeViewModel.prefetchDetailMeta(
+    scope: CoroutineScope,
+    item: MetaPreview,
+    warmEnrichment: Boolean
+) {
+    if (item.id in backgroundMetaPrefetchedIds) return
+    backgroundMetaPrefetchedIds.add(item.id)
+    scope.launch {
+        val alreadyStored = metaDetailsDiskCache.hasEntryFor(item.id, item.apiType)
+        if (alreadyStored) return@launch
+        if (warmEnrichment) warmFullTmdbEnrichment(item)
+        metaRepository.getMetaFromAllAddons(
+            type = item.apiType,
+            id = item.id
+        ).first { it !is NetworkResult.Loading }
+    }
+}
+
+/**
  * The hero declines credits and trailers, which cache under their own key, so the detail screen
  * would otherwise open on a miss. Requests the combination the detail screen will ask for, so its
  * lookup is a cache hit. Called wherever the detail prefetch is claimed.
@@ -537,16 +562,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
             // Still prefetch full meta in background for instant detail screen.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                warmFullTmdbEnrichment(item)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = true)
             return
         }
     }
@@ -591,15 +607,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
         // Before the enrichment await, not after: the detail screen blocks on this meta and it
         // needs nothing the enrichment produces. It also goes to the addon's host, so it does not
         // queue behind the TMDB calls.
-        if (item.id !in backgroundMetaPrefetchedIds) {
-            backgroundMetaPrefetchedIds.add(item.id)
-            viewModelScope.launch {
-                metaRepository.getMetaFromAllAddons(
-                    type = item.apiType,
-                    id = item.id
-                ).first { it !is NetworkResult.Loading }
-            }
-        }
+        prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         try {
             // Launch TMDB and external meta addon fetch in parallel.
@@ -757,15 +765,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
             }
 
             // Background prefetch for detail screen cache.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         } finally {
             if (pendingAdjacentPrefetchItemId == item.id) {
