@@ -7,6 +7,8 @@
 package com.nuvio.tv.ui.screens.home
 
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.backdropDecodeHeight
+import com.nuvio.tv.ui.util.backdropDecodeWidth
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.AnimationSpec
@@ -989,17 +991,13 @@ fun ModernHomeContent(
                 }
             }
             val contentFocusRequester = LocalContentFocusRequester.current
-            val heroMediaWidthPx = remember(screenWidth, localDensity, fullScreenBackdrop) {
-                with(localDensity) {
-                    if (fullScreenBackdrop) screenWidth.roundToPx()
-                    else (screenWidth * MODERN_HERO_MEDIA_WIDTH_FRACTION).roundToPx()
-                }.coerceAtLeast(1)
+            // Same size the details page asks for, so opening a title reuses this bitmap
+            // rather than decoding the same artwork again.
+            val heroMediaWidthPx = remember(screenWidth, localDensity) {
+                backdropDecodeWidth(with(localDensity) { screenWidth.roundToPx() })
             }
-            val heroMediaHeightPx = remember(heroBackdropHeight, screenHeight, localDensity, fullScreenBackdrop) {
-                with(localDensity) {
-                    if (fullScreenBackdrop) screenHeight.roundToPx()
-                    else heroBackdropHeight.roundToPx()
-                }.coerceAtLeast(1)
+            val heroMediaHeightPx = remember(screenHeight, localDensity) {
+                backdropDecodeHeight(with(localDensity) { screenHeight.roundToPx() })
             }
 
             val heroMediaModifier = remember(heroBackdropHeight, screenHeight, fullScreenBackdrop) {
