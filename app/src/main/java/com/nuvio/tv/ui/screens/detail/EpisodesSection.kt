@@ -67,7 +67,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.tv.core.util.parseEpisodeReleaseLocalDate
@@ -84,8 +86,12 @@ import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
-import coil3.request.crossfade
+import coil3.request.ImageResult
 import coil3.request.transformations
+import coil3.request.transitionFactory
+import coil3.transition.CrossfadeTransition
+import coil3.transition.Transition
+import coil3.transition.TransitionTarget
 import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.EpisodeOptionsOverlayStyle
@@ -105,6 +111,7 @@ import java.util.Locale
 import java.util.TimeZone
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import com.nuvio.tv.ui.util.rememberLongPressKeyTracker
+import com.nuvio.tv.ui.components.LayerFreeText
 
 private const val EPISODE_CARD_CONTENT_TYPE = "episode_card"
 private const val EPISODE_SCROLL_REPEAT_THROTTLE_MS = 80L
@@ -112,7 +119,10 @@ private const val EPISODE_RESTORE_FALLBACK_MS = 250L
 
 /** A row that never reports a layout must not hold the restore open. */
 private const val EPISODE_ROW_LAYOUT_WAIT_MS = 120L
-private const val EPISODE_OVERLAY_PREFETCH_DELAY_MS = 120L
+private const val EPISODE_OVERLAY_PREFETCH_DELAY_MS = 500L
+
+/** Narrowest average glyph assumed when trimming text to what its lines can show. */
+private const val NARROWEST_GLYPH_EM = 0.3f
 
 @OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -472,6 +482,7 @@ fun EpisodesRow(
                 imdbRating = imdbRating,
                 isMarkedWatched = isMarkedWatched,
                 blurUnwatched = blurUnwatchedEpisodes,
+                overlayStyle = episodeOptionsOverlayStyle,
                 suppressMarquee = isOverlayOpen,
                 cardMetrics = cardMetrics,
                 onClick = episodeOnClick,
@@ -559,12 +570,13 @@ fun EpisodesRow(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun EpisodeCard(
+internal fun EpisodeCard(
     episode: Video,
     watchProgress: com.nuvio.tv.domain.model.WatchProgress? = null,
     imdbRating: Double? = null,
     isMarkedWatched: Boolean = false,
     blurUnwatched: Boolean = false,
+    overlayStyle: EpisodeOptionsOverlayStyle = EpisodeOptionsOverlayStyle.ARTWORK,
     suppressMarquee: Boolean = false,
     cardMetrics: EpisodeCardMetrics,
     onClick: () -> Unit,
@@ -655,6 +667,15 @@ private fun EpisodeCard(
             )
         )
     }
+    // Text shapes its whole string on every layout, and only a few lines of this ever show.
+    val visibleDescription = remember(description, cardMetrics, descriptionStyle, density) {
+        description.clampToLines(
+            lineWidthPx = with(density) { (cardMetrics.cardWidth - cardMetrics.contentPadding * 2).toPx() },
+            fontSize = descriptionStyle.fontSize,
+            maxLines = cardMetrics.descriptionMaxLines,
+            density = density,
+        )
+    }
     val textSecondary = NuvioTheme.colors.TextSecondary
     val metaLabelStyle = remember(typography, textSecondary) {
         typography.labelSmall.copy(color = textSecondary)
@@ -669,10 +690,11 @@ private fun EpisodeCard(
     val badgeShape = remember(cardMetrics.episodeBadgeCornerRadius) { RoundedCornerShape(cardMetrics.episodeBadgeCornerRadius) }
     val progressBgColor = remember { Color.Black.copy(alpha = 0.45f) }
     val notStartedBadgeColor = remember(textSecondary) { textSecondary.copy(alpha = 0.9f) }
+    val thumbnailTransition = remember(episode.thumbnail) { FadeIfDrawnTransitionFactory() }
     val thumbnailRequest = remember(context, episode.thumbnail, thumbnailWidthPx, thumbnailHeightPx, shouldBlur) {
         ImageRequest.Builder(context)
             .data(episode.thumbnail)
-            .crossfade(true)
+            .transitionFactory(thumbnailTransition)
             .size(width = thumbnailWidthPx, height = thumbnailHeightPx)
             .apply {
                 if (shouldBlur) {
@@ -691,11 +713,14 @@ private fun EpisodeCard(
         with(density) { configuration.screenHeightDp.dp.roundToPx() }
     }
     val imageLoader = context.imageLoader
-    val overlayPrefetchUrl = remember(episode.thumbnail, shouldBlur) {
-        if (shouldBlur) {
-            episode.thumbnail?.takeIf { it.isNotBlank() }
-        } else {
-            overlayBackdropUrl
+    val overlayBlur = remember(overlayStyle, blurUnwatched, isWatched) {
+        shouldBlurEpisodeOverlayBackdrop(overlayStyle, blurUnwatched, isWatched)
+    }
+    val overlayPrefetchUrl = remember(episode.thumbnail, overlayBlur, overlayStyle) {
+        when {
+            !shouldShowEpisodeOverlayBackdrop(overlayStyle) -> null
+            overlayBlur -> episode.thumbnail?.takeIf { it.isNotBlank() }
+            else -> overlayBackdropUrl
         }
     }
     LaunchedEffect(
@@ -703,7 +728,7 @@ private fun EpisodeCard(
         overlayPrefetchUrl,
         overlayBackdropWidthPx,
         overlayBackdropHeightPx,
-        shouldBlur
+        overlayBlur
     ) {
         if (!isFocused) return@LaunchedEffect
         val url = overlayPrefetchUrl ?: return@LaunchedEffect
@@ -712,13 +737,13 @@ private fun EpisodeCard(
         val (decodeWidthPx, decodeHeightPx) = episodeOverlayBackdropDecodeSize(
             overlayBackdropWidthPx,
             overlayBackdropHeightPx,
-            shouldBlur
+            overlayBlur
         )
         val cacheKey = episodeOverlayBackdropMemoryCacheKey(
             url,
             decodeWidthPx,
             decodeHeightPx,
-            shouldBlur
+            overlayBlur
         )
         if (imageLoader.memoryCache?.get(MemoryCache.Key(cacheKey)) != null) return@LaunchedEffect
         imageLoader.enqueue(
@@ -727,7 +752,7 @@ private fun EpisodeCard(
                 url,
                 overlayBackdropWidthPx,
                 overlayBackdropHeightPx,
-                blur = shouldBlur
+                blur = overlayBlur
             )
         )
     }
@@ -847,6 +872,7 @@ private fun EpisodeCard(
 
                     //Gradient for text legibility
                     .drawWithContent {
+                        thumbnailTransition.cardDrawn = true
                         drawContent()
 
                         // Floor-fade text-protection scrim across the whole card: fully transparent
@@ -901,7 +927,7 @@ private fun EpisodeCard(
                             vertical = cardMetrics.episodeBadgeVerticalPadding
                         )
                 ) {
-                    Text(
+                    LayerFreeText(
                         text = episodeCode,
                         style = episodeBadgeStyle,
                         maxLines = 1
@@ -913,11 +939,12 @@ private fun EpisodeCard(
                     focused = isFocused && !suppressMarquee,
                     style = titleStyle,
                     color = textPrimary,
+                    layerFree = true,
                 )
 
                 if (description.isNotBlank()) {
-                    Text(
-                        text = description,
+                    LayerFreeText(
+                        text = visibleDescription,
                         style = descriptionStyle,
                         maxLines = cardMetrics.descriptionMaxLines,
                         overflow = TextOverflow.Ellipsis
@@ -941,7 +968,7 @@ private fun EpisodeCard(
                                     tint = textSecondary,
                                     modifier = Modifier.size(cardMetrics.metadataIconSize)
                                 )
-                                Text(
+                                LayerFreeText(
                                     text = runtime,
                                     style = metaLabelStyle,
                                     maxLines = 1
@@ -961,7 +988,7 @@ private fun EpisodeCard(
                                     textStyle = metaLabelStyle,
                                     textColor = textSecondary
                                 )
-                                Text(
+                                LayerFreeText(
                                     text = rating,
                                     style = ratingStyle,
                                     maxLines = 1
@@ -970,7 +997,7 @@ private fun EpisodeCard(
                         }
 
                         if (formattedDate.isNotBlank()) {
-                            Text(
+                            LayerFreeText(
                                 text = formattedDate,
                                 style = metaLabelStyle,
                                 maxLines = 1,
@@ -1041,7 +1068,7 @@ private fun EpisodeCard(
                             vertical = cardMetrics.episodeBadgeVerticalPadding
                         )
                 ) {
-                    Text(
+                    LayerFreeText(
                         text = strUnavailable.uppercase(Locale.getDefault()),
                         style = episodeBadgeStyle,
                         maxLines = 1
@@ -1282,4 +1309,29 @@ private fun isSelectKey(keyCode: Int): Boolean {
 
 private fun episodePendingKey(video: Video): String {
     return "${video.id}:${video.season ?: -1}:${video.episode ?: -1}"
+}
+
+/**
+ * Trims to the most characters [maxLines] could hold if every glyph were [NARROWEST_GLYPH_EM] wide,
+ * so the cut always lands behind the ellipsis.
+ */
+private fun String.clampToLines(lineWidthPx: Float, fontSize: TextUnit, maxLines: Int, density: Density): String {
+    if (!fontSize.isSp) return this
+    val glyphPx = with(density) { fontSize.toPx() } * NARROWEST_GLYPH_EM
+    val limit = ((lineWidthPx / glyphPx).toInt() + 1) * maxLines
+    if (limit <= 0 || length <= limit) return this
+    val end = if (this[limit - 1].isHighSurrogate()) limit - 1 else limit
+    return substring(0, end)
+}
+
+/**
+ * Coil's crossfade, but only once the card has been drawn. A picture that finished loading while its
+ * card was off screen appears at once instead of fading in as the card scrolls into view.
+ */
+private class FadeIfDrawnTransitionFactory : Transition.Factory {
+    var cardDrawn = false
+    private val crossfade = CrossfadeTransition.Factory()
+
+    override fun create(target: TransitionTarget, result: ImageResult): Transition =
+        if (cardDrawn) crossfade.create(target, result) else Transition.Factory.NONE.create(target, result)
 }

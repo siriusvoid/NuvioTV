@@ -57,6 +57,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaCastMember
+import com.nuvio.tv.ui.components.LayerFreeText
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -395,7 +396,7 @@ private fun CastMemberItem(
         }
 
         if (!hideActorName) {
-            Text(
+            LayerFreeText(
                 text = member.name,
                 style = nameStyle,
                 color = NuvioTheme.colors.TextSecondary,
@@ -404,7 +405,7 @@ private fun CastMemberItem(
             )
             if (displayCharacter != null) {
                 Spacer(modifier = Modifier.height(NuvioTheme.spacing.xs))
-                Text(
+                LayerFreeText(
                     text = displayCharacter,
                     style = characterStyle,
                     color = NuvioTheme.colors.TextTertiary,
