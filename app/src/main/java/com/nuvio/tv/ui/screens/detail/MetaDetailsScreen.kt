@@ -1814,22 +1814,22 @@ private fun MetaDetailsContent(
     val backdropHeightPx = remember(screenHeightDp, localDensity) {
         with(localDensity) { screenHeightDp.roundToPx() }
     }
-    val hasHeroBackdrop = !heroBackdropUrl.isNullOrBlank()
+    val backdropDecodeWidthPx = remember(backdropWidthPx) { backdropDecodeWidth(backdropWidthPx) }
+    val backdropDecodeHeightPx = remember(backdropHeightPx) { backdropDecodeHeight(backdropHeightPx) }
     val seedBackdropUrl = heroBackdropUrl?.takeIf { it.isNotBlank() }
     val backdropDataUrl = meta.backdropUrl ?: meta.poster
     val shouldReuseSeedBackdrop = seedBackdropUrl != null && seedBackdropUrl == backdropDataUrl
-    val shouldShowSeedBackdropUnderlay = seedBackdropUrl != null && !shouldReuseSeedBackdrop
     val heroBackdropRequest = remember(
         localContext,
         seedBackdropUrl,
-        backdropWidthPx,
-        backdropHeightPx
+        backdropDecodeWidthPx,
+        backdropDecodeHeightPx
     ) {
         seedBackdropUrl?.let {
             ImageRequest.Builder(localContext)
                 .data(it)
                 .crossfade(false)
-                .size(width = backdropWidthPx, height = backdropHeightPx)
+                .size(width = backdropDecodeWidthPx, height = backdropDecodeHeightPx)
                 .build()
         }
     }
@@ -1837,18 +1837,17 @@ private fun MetaDetailsContent(
         localContext,
         backdropDataUrl,
         shouldReuseSeedBackdrop,
-        hasHeroBackdrop,
         heroBackdropRequest,
-        backdropWidthPx,
-        backdropHeightPx
+        backdropDecodeWidthPx,
+        backdropDecodeHeightPx
     ) {
         if (shouldReuseSeedBackdrop && heroBackdropRequest != null) {
             heroBackdropRequest
         } else {
             ImageRequest.Builder(localContext)
                 .data(backdropDataUrl)
-                .apply { if (shouldShowSeedBackdropUnderlay) crossfade(400) else if (hasHeroBackdrop) crossfade(false) else crossfade(400) }
-                .size(width = backdropWidthPx, height = backdropHeightPx)
+                .crossfade(400)
+                .size(width = backdropDecodeWidthPx, height = backdropDecodeHeightPx)
                 .build()
         }
     }
@@ -2570,7 +2569,6 @@ private fun PlaybackHandoffBackdrop(backdropUrl: String?) {
 @Composable
 private fun BackdropLayer(
     backdropRequest: ImageRequest,
-    heroBackdropRequest: ImageRequest? = null,
     trailerUrl: String?,
     trailerAudioUrl: String?,
     isTrailerPlaying: Boolean,
@@ -2585,9 +2583,6 @@ private fun BackdropLayer(
     leftGradient: ImageBitmap,
     bottomGradient: ImageBitmap,
 ) {
-    var showHeroBackdropUnderlay by remember(heroBackdropRequest, backdropRequest) {
-        mutableStateOf(heroBackdropRequest != null)
-    }
     val backdropAlphaState = animateFloatAsState(
         targetValue = if (isTrailerPlaying) 0f else if (isScrolledPastHero) 0.15f else 1f,
         animationSpec = tween(durationMillis = if (isScrolledPastHero) 300 else 800),
@@ -2599,24 +2594,11 @@ private fun BackdropLayer(
         label = "gradientFade"
     )
     Box(modifier = Modifier.fillMaxSize()) {
-        // Show hero backdrop from previous screen as persistent underlay
-        // to prevent flash/re-render during navigation transition
-        if (showHeroBackdropUnderlay && heroBackdropRequest != null) {
-            AsyncImage(
-                model = heroBackdropRequest,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                alpha = backdropAlphaState.value,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopEnd
-            )
-        }
         AsyncImage(
             model = backdropRequest,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             alpha = backdropAlphaState.value,
-            onSuccess = { showHeroBackdropUnderlay = false },
             contentScale = ContentScale.Crop,
             alignment = Alignment.TopEnd
         )
