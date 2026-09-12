@@ -590,16 +590,31 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             if (!externalEnrichmentOutstanding(item.id)) {
                 if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
                 // Still prefetch full meta in background for instant detail screen.
-                if (item.id !in backgroundMetaPrefetchedIds) {
-                    backgroundMetaPrefetchedIds.add(item.id)
-                    warmFullTmdbEnrichment(item)
-                    launch {
-                        metaRepository.getMetaFromAllAddons(
-                            type = item.apiType,
-                            id = item.id
-                        ).first { it !is NetworkResult.Loading }
-                    }
-                }
+                prefetchDetailMeta(this@launch, item, warmEnrichment = true)
+                return@launch
+            }
+        }
+
+        // A stored copy already holds what the hero asks the network for, so it fills the hero
+        // first. Only a copy old enough to need a refresh falls through to the fetches below.
+        // Read and parsed here, once per focused title, after the debounce and off the main thread.
+        val storedDetails = runCatching {
+            metaDetailsDiskCache.read(
+                metaDetailsDiskCache.keyFor(
+                    itemId = item.id,
+                    itemType = item.apiType,
+                    preferExternalMetaAddon = layoutPreferenceDataStore.preferExternalMetaAddonDetail.value,
+                    tmdbSettings = currentTmdbSettings
+                )
+            )
+        }.getOrNull()
+        if (storedDetails != null) {
+            // Language is dropped: the copy carries TMDB's original language, which the rows never
+            // had, and it would add a chip to the hero for stored titles only.
+            updateCatalogItemWithMeta(item.id, storedDetails.meta.copy(language = null))
+            if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+            if (!storedDetails.needsRefresh()) {
+                prefetchedExternalMetaIds.add(item.id)
                 return@launch
             }
         }

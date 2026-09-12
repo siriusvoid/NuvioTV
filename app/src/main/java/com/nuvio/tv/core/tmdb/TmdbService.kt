@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 
 private const val TAG = "TmdbService"
 private val TMDB_API_KEY = BuildConfig.TMDB_API_KEY
@@ -246,8 +247,10 @@ class TmdbService @Inject constructor(
      * @return The TMDB ID as a string, or null if conversion failed
      */
     suspend fun ensureTmdbId(videoId: String, mediaType: String): String? {
-        // Check if it's already a TMDB ID (numeric or prefixed)
+        // Check if it's already a TMDB ID (numeric or prefixed). A local library id carries the
+        // TMDB id too, so stripping its prefix first lets the rest of this resolve it unchanged.
         val cleanId = videoId
+            .removePrefix(LocalLibraryGateway.LOCAL_ID_PREFIX)
             .removePrefix("tmdb:")
             .removePrefix("movie:")
             .removePrefix("series:")
