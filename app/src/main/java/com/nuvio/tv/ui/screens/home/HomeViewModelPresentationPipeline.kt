@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -491,6 +492,45 @@ private suspend fun HomeViewModel.fetchExternalMetaOutcome(item: MetaPreview): E
         ExternalMetaOutcome.Failed
     }
 
+/** Warms what the detail screen blocks on, unless a stored copy exists (existence, not freshness). */
+private fun HomeViewModel.prefetchDetailMeta(
+    scope: CoroutineScope,
+    item: MetaPreview,
+    warmEnrichment: Boolean
+) {
+    if (item.id in backgroundMetaPrefetchedIds) return
+    backgroundMetaPrefetchedIds.add(item.id)
+    scope.launch {
+        val alreadyStored = metaDetailsDiskCache.hasEntryFor(item.id, item.apiType)
+        if (alreadyStored) return@launch
+        if (warmEnrichment) warmFullTmdbEnrichment(item)
+        metaRepository.getMetaFromAllAddons(
+            type = item.apiType,
+            id = item.id
+        ).first { it !is NetworkResult.Loading }
+    }
+}
+
+/** Requests the combination the detail screen asks for, so it opens on a cache hit. */
+private fun HomeViewModel.warmFullTmdbEnrichment(item: MetaPreview) {
+    if (!fullTmdbWarmedIds.add(item.id)) return
+    val tmdbEnabledForCurrentLayout = currentTmdbSettings.enabled &&
+        (_uiState.value.homeLayout != HomeLayout.MODERN || currentTmdbSettings.modernHomeEnabled)
+    if (!tmdbEnabledForCurrentLayout) return
+    viewModelScope.launch {
+        runCatching {
+            val tmdbId = tmdbService.ensureTmdbId(item.id, item.apiType) ?: return@runCatching
+            tmdbMetadataService.fetchEnrichment(
+                tmdbId = tmdbId,
+                contentType = item.type,
+                language = currentTmdbSettings.language,
+                includeCredits = currentTmdbSettings.useCredits,
+                includeTrailers = currentTmdbSettings.useTrailers
+            )
+        }
+    }
+}
+
 internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
     if (startupGracePeriodActive) {
         deferredEnrichItem = item
@@ -513,15 +553,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             }
             if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
             // Still prefetch full meta in background for instant detail screen.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = true)
             return
         }
     }
@@ -549,18 +581,34 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
             if (!externalEnrichmentOutstanding(item.id)) {
                 if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
                 // Still prefetch full meta in background for instant detail screen.
-                if (item.id !in backgroundMetaPrefetchedIds) {
-                    backgroundMetaPrefetchedIds.add(item.id)
-                    launch {
-                        metaRepository.getMetaFromAllAddons(
-                            type = item.apiType,
-                            id = item.id
-                        ).first { it !is NetworkResult.Loading }
-                    }
-                }
+                prefetchDetailMeta(this@launch, item, warmEnrichment = true)
                 return@launch
             }
         }
+
+        // A stored copy fills the hero first; only one needing a refresh falls through to the fetches below.
+        val storedDetails = runCatching {
+            metaDetailsDiskCache.read(
+                metaDetailsDiskCache.keyFor(
+                    itemId = item.id,
+                    itemType = item.apiType,
+                    preferExternalMetaAddon = layoutPreferenceDataStore.preferExternalMetaAddonDetail.value,
+                    tmdbSettings = currentTmdbSettings
+                )
+            )
+        }.getOrNull()
+        if (storedDetails != null) {
+            // Language dropped: rows never had it, and it would add a chip only for stored titles.
+            updateCatalogItemWithMeta(item.id, storedDetails.meta.copy(language = null))
+            if (_enrichingItemId.value == item.id) setEnrichingItemId(null)
+            if (!storedDetails.needsRefresh()) {
+                prefetchedExternalMetaIds.add(item.id)
+                return@launch
+            }
+        }
+
+        // Before the enrichment await: the detail screen blocks on this meta, which needs none of it.
+        prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         try {
             // Launch TMDB and external meta addon fetch in parallel.
@@ -574,7 +622,10 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                         tmdbMetadataService.fetchEnrichment(
                             tmdbId = tmdbId,
                             contentType = item.type,
-                            language = currentTmdbSettings.language
+                            language = currentTmdbSettings.language,
+                            // The hero shows neither.
+                            includeCredits = false,
+                            includeTrailers = false
                         )
                     }.getOrNull()
                 } else null
@@ -621,16 +672,7 @@ internal fun HomeViewModel.onItemFocusPipeline(item: MetaPreview) {
                 addEnrichedPreview(item.id, findCatalogItemById(item.id) ?: item)
             }
 
-            // Always prefetch full meta in background for instant detail screen loading.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            warmFullTmdbEnrichment(item)
 
             // Warm up watch progress pipeline so detail screen reads are fast.
             viewModelScope.launch {
@@ -681,7 +723,10 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
                         tmdbMetadataService.fetchEnrichment(
                             tmdbId = tmdbId,
                             contentType = item.type,
-                            language = currentTmdbSettings.language
+                            language = currentTmdbSettings.language,
+                            // The hero shows neither.
+                            includeCredits = false,
+                            includeTrailers = false
                         )
                     }.getOrNull()
                 } else null
@@ -721,15 +766,7 @@ internal fun HomeViewModel.preloadAdjacentItemPipeline(item: MetaPreview) {
             }
 
             // Background prefetch for detail screen cache.
-            if (item.id !in backgroundMetaPrefetchedIds) {
-                backgroundMetaPrefetchedIds.add(item.id)
-                viewModelScope.launch {
-                    metaRepository.getMetaFromAllAddons(
-                        type = item.apiType,
-                        id = item.id
-                    ).first { it !is NetworkResult.Loading }
-                }
-            }
+            prefetchDetailMeta(viewModelScope, item, warmEnrichment = false)
 
         } finally {
             if (pendingAdjacentPrefetchItemId == item.id) {
@@ -967,7 +1004,10 @@ internal suspend fun HomeViewModel.enrichHeroItemsPipeline(
                             tmdbMetadataService.fetchEnrichment(
                                 tmdbId = tmdbId,
                                 contentType = item.type,
-                                language = settings.language
+                                language = settings.language,
+                                // The hero shows neither.
+                                includeCredits = false,
+                                includeTrailers = false
                             )
                         }
                         val mdbDeferred = if (mdbEnabled) async {

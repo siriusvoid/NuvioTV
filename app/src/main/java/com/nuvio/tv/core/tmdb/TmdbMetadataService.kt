@@ -64,14 +64,18 @@ class TmdbMetadataService(
     private val entityRailCache = ConcurrentHashMap<String, List<MetaPreview>>()
     private val entityBrowseCache = ConcurrentHashMap<String, TmdbEntityBrowseData>()
 
+    /** Ask only for the sections shown: the call waits for the slowest. Cached per flag combination. */
     suspend fun fetchEnrichment(
         tmdbId: String,
         contentType: ContentType,
-        language: String = "en"
+        language: String = "en",
+        includeCredits: Boolean = true,
+        includeTrailers: Boolean = true
     ): TmdbEnrichment? =
         withContext(ioDispatcher) {
             val normalizedLanguage = normalizeTmdbLanguage(language)
-            val cacheKey = "$tmdbId:${contentType.name}:$normalizedLanguage"
+            val cacheKey = "$tmdbId:${contentType.name}:$normalizedLanguage" +
+                ":c$includeCredits:t$includeTrailers"
             enrichmentCache[cacheKey]?.let { return@withContext it }
             enrichmentInFlight[cacheKey]?.let { return@withContext it.await() }
 
@@ -102,6 +106,7 @@ class TmdbMetadataService(
                         }.body()
                     }
                     val creditsDeferred = async {
+                        if (!includeCredits) return@async null
                         when (tmdbType) {
                             "tv" -> {
                                 val aggregate = tmdbApi.getTvAggregateCredits(numericId, TMDB_API_KEY, normalizedLanguage).body()
@@ -128,17 +133,10 @@ class TmdbMetadataService(
                             }
                         }
                     }
-                    val altTitlesDeferred = async {
-                        runCatching {
-                            val resp = when (tmdbType) {
-                                "tv" -> tmdbApi.getTvAlternativeTitles(numericId, TMDB_API_KEY).body()
-                                else -> tmdbApi.getMovieAlternativeTitles(numericId, TMDB_API_KEY).body()
-                            }
-                            (resp?.movieTitles ?: resp?.tvTitles).orEmpty()
-                                .mapNotNull { it.title?.trim()?.takeIf(String::isNotBlank) }
-                        }.getOrDefault(emptyList())
-                    }
+                    // Nothing reads alternativeTitles, so it isn't requested.
+                    val altTitlesDeferred = async { emptyList<String>() }
                     val trailersDeferred = async {
+                        if (!includeTrailers) return@async emptyList<MetaTrailer>()
                         fetchTmdbTrailers(
                             tmdbId = numericId,
                             tmdbType = tmdbType,
@@ -155,7 +153,8 @@ class TmdbMetadataService(
                     )
                 }
 
-                val needsCastEnglishFallback = !normalizedLanguage.startsWith("en") &&
+                val needsCastEnglishFallback = includeCredits &&
+                    !normalizedLanguage.startsWith("en") &&
                     !normalizedLanguage.startsWith("ja") &&
                     !normalizedLanguage.startsWith("ko") &&
                     !normalizedLanguage.startsWith("zh") &&
@@ -1667,6 +1666,15 @@ data class TmdbEnrichment(
     val alternativeTitles: List<String> = emptyList(),
     val trailers: List<MetaTrailer> = emptyList()
 )
+
+/** TMDB fills missing titles with a non-null "Episode N" that ?: can't catch; N must be this episode's. */
+fun isGeneratedTmdbEpisodeTitle(title: String?, episodeNumber: Int?): Boolean {
+    if (title.isNullOrBlank() || episodeNumber == null) return false
+    val match = GENERATED_EPISODE_TITLE.matchEntire(title.trim()) ?: return false
+    return match.groupValues[1].toIntOrNull() == episodeNumber
+}
+
+private val GENERATED_EPISODE_TITLE = Regex("""^\p{L}[\p{L}.]{0,14}\s*(\d{1,4})$""")
 
 data class TmdbEpisodeEnrichment(
     val title: String?,
