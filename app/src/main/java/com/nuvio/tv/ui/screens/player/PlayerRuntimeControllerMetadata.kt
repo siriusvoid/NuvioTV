@@ -435,7 +435,9 @@ internal fun PlayerRuntimeController.showStreamSourceIndicator(stream: Stream) {
 /** Used instead of assigning skipIntervals directly, so the timeline markers stay in sync. */
 internal fun PlayerRuntimeController.setSkipIntervals(list: List<SkipInterval>) {
     skipIntervals = list
-    _uiState.update { it.copy(timelineSegments = list) }
+    // Post-credits scenes are there to be watched, so they get no marker.
+    val markers = list.filterNot { interval -> interval.type == "post-credits" }
+    _uiState.update { it.copy(timelineSegments = markers) }
 }
 
 internal fun PlayerRuntimeController.updateActiveSkipInterval(positionMs: Long) {
