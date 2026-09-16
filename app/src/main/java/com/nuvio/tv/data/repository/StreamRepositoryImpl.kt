@@ -176,7 +176,7 @@ class StreamRepositoryImpl @Inject constructor(
                     val grouped = if (local.data.isEmpty()) emptyList()
                     else listOf(
                         AddonStreams(
-                            addonName = "Local Library",
+                            addonName = context.getString(R.string.local_library_addon_name),
                             addonLogo = null,
                             streams = local.data
                         )

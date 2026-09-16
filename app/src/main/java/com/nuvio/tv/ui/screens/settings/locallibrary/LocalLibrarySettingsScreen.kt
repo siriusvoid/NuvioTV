@@ -19,10 +19,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import com.nuvio.tv.R
 import com.nuvio.tv.data.locallibrary.LocalLibraryManager
 import com.nuvio.tv.domain.model.locallibrary.LocalLibrarySourceConfig
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
@@ -31,6 +33,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 
 @Composable
 fun LocalLibrarySettingsScreen(
@@ -44,12 +47,12 @@ fun LocalLibrarySettingsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     SettingsStandaloneScaffold(
-        title = "Local sources",
-        subtitle = "Scan folders on this device for media."
+        title = stringResource(R.string.settings_local_library_title),
+        subtitle = stringResource(R.string.local_library_screen_subtitle)
     ) {
         SettingsDetailHeader(
-            title = "Sources",
-            subtitle = "Each source is scanned and matched to TMDB so it appears alongside addon content."
+            title = stringResource(R.string.library_sources),
+            subtitle = stringResource(R.string.local_library_sources_desc)
         )
 
         val anyScanning = state.progress.values.any {
@@ -59,15 +62,17 @@ fun LocalLibrarySettingsScreen(
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
-                title = "Add source…",
-                subtitle = "On-device folder",
+                title = stringResource(R.string.library_source_add),
+                subtitle = stringResource(R.string.local_library_add_source_sub),
                 leadingIcon = Icons.Default.CreateNewFolder,
                 onClick = onNavigateToAddSource
             )
             SettingsActionRow(
-                title = "Rescan all sources",
-                subtitle = if (anyScanning) "Scanning in progress…"
-                    else "Re-index every configured source",
+                title = stringResource(R.string.local_library_rescan_all),
+                subtitle = stringResource(
+                    if (anyScanning) R.string.library_scanning_in_progress
+                    else R.string.local_library_rescan_all_sub
+                ),
                 leadingIcon = Icons.Default.Refresh,
                 enabled = state.sources.isNotEmpty() && !anyScanning,
                 onClick = { viewModel.rescanAllSources() }
@@ -80,7 +85,7 @@ fun LocalLibrarySettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                title = "Configured sources"
+                title = stringResource(R.string.library_configured_sources)
             ) {
                 val sourceListState = rememberLazyListState()
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -94,7 +99,7 @@ fun LocalLibrarySettingsScreen(
                             SourceRow(
                                 config = source,
                                 progress = state.progress[source.id],
-                                kindLabel = viewModel.kindLabel(source.kind),
+                                kindLabel = stringResource(viewModel.kindLabel(source.kind)),
                                 onClick = { onNavigateToSourceDetail(source.id) }
                             )
                         }
@@ -114,17 +119,20 @@ private fun SourceRow(
     onClick: () -> Unit
 ) {
     val statusText = when (progress) {
-        is LocalLibraryManager.ScanProgress.Scanning -> "Scanning… ${progress.itemsFound} found"
-        is LocalLibraryManager.ScanProgress.Matching -> "Matching ${progress.matched}/${progress.total}"
-        is LocalLibraryManager.ScanProgress.Failed -> "Failed: ${progress.reason}"
-        is LocalLibraryManager.ScanProgress.Idle -> "${progress.itemCount} items"
-        null -> "${config.itemCount} items"
+        is LocalLibraryManager.ScanProgress.Scanning ->
+            stringResource(R.string.local_library_scanning_found, progress.itemsFound)
+        is LocalLibraryManager.ScanProgress.Matching ->
+            stringResource(R.string.library_scan_matching, progress.matched, progress.total)
+        is LocalLibraryManager.ScanProgress.Failed -> stringResource(R.string.library_scan_failed, progress.reason)
+        is LocalLibraryManager.ScanProgress.Idle ->
+            quantityStringResource(R.plurals.local_library_items, progress.itemCount)
+        null -> quantityStringResource(R.plurals.local_library_items, config.itemCount)
     }
 
     SettingsActionRow(
         title = config.displayName,
         subtitle = "$kindLabel · $statusText",
-        value = if (config.enabled) null else "Disabled",
+        value = if (config.enabled) null else stringResource(R.string.library_disabled),
         valueColor = NuvioTheme.colors.TextTertiary,
         leadingIcon = Icons.Default.Folder,
         titleTrailingIcon = if (progress is LocalLibraryManager.ScanProgress.Failed) {

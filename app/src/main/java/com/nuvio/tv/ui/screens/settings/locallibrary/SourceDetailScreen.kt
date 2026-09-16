@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -16,6 +17,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.data.locallibrary.LocalLibraryManager
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
@@ -23,6 +25,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsGroupNote
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsToggleRow
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 import java.text.DateFormat
 import java.util.Date
 
@@ -38,9 +41,9 @@ fun SourceDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val config = state.sources.firstOrNull { it.id == sourceId }
     if (config == null) {
-        SettingsStandaloneScaffold(title = "Source", subtitle = "") {
+        SettingsStandaloneScaffold(title = stringResource(R.string.library_source), subtitle = "") {
             Text(
-                text = "Source not found.",
+                text = stringResource(R.string.library_source_not_found),
                 style = MaterialTheme.typography.bodyMedium,
                 color = NuvioTheme.colors.TextSecondary
             )
@@ -52,22 +55,23 @@ fun SourceDetailScreen(
     // MEDIUM date, SHORT time: the locale's wording without the seconds the default adds.
     val lastScan = config.lastScanAt?.let {
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))
-    } ?: "Never"
+    } ?: stringResource(R.string.library_never)
+    val kindLabel = stringResource(viewModel.kindLabel(config.kind))
 
     SettingsStandaloneScaffold(
         title = config.displayName,
-        subtitle = viewModel.kindLabel(config.kind)
+        subtitle = kindLabel
     ) {
         SettingsDetailHeader(
             title = config.displayName,
-            subtitle = "${viewModel.kindLabel(config.kind)} · Last scan: $lastScan · " +
-                "${config.itemCount} items indexed"
+            subtitle = "$kindLabel · ${stringResource(R.string.library_last_scan, lastScan)} · " +
+                quantityStringResource(R.plurals.local_library_items_indexed, config.itemCount)
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsToggleRow(
-                title = "Enabled",
-                subtitle = "Show this source's content in catalogs and search.",
+                title = stringResource(R.string.library_enabled),
+                subtitle = stringResource(R.string.local_library_enabled_sub),
                 checked = config.enabled,
                 onToggle = { viewModel.setEnabled(sourceId, !config.enabled) }
             )
@@ -78,7 +82,7 @@ fun SourceDetailScreen(
         if (activeProgress != null) {
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
-                title = "Scan status"
+                title = stringResource(R.string.library_scan_status)
             ) {
                 SettingsGroupNote(text = formatProgress(activeProgress))
             }
@@ -95,7 +99,7 @@ fun SourceDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Rescan now")
+                Text(stringResource(R.string.library_rescan_now))
             }
             Button(
                 onClick = { onNavigateToManualMatch(sourceId) },
@@ -104,7 +108,7 @@ fun SourceDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Manual match")
+                Text(stringResource(R.string.local_library_manual_match))
             }
             Button(
                 onClick = { viewModel.removeSource(sourceId) { onBackPress() } },
@@ -113,16 +117,22 @@ fun SourceDetailScreen(
                     contentColor = NuvioTheme.colors.Error
                 )
             ) {
-                Text("Remove source")
+                Text(stringResource(R.string.library_source_remove))
             }
         }
     }
 }
 
+@Composable
 private fun formatProgress(progress: LocalLibraryManager.ScanProgress): String =
     when (progress) {
-        is LocalLibraryManager.ScanProgress.Idle -> "Idle (${progress.itemCount} items)"
-        is LocalLibraryManager.ScanProgress.Scanning -> "Scanning… ${progress.itemsFound} found so far"
-        is LocalLibraryManager.ScanProgress.Matching -> "Matching ${progress.matched}/${progress.total}"
-        is LocalLibraryManager.ScanProgress.Failed -> "Failed: ${progress.reason}"
+        is LocalLibraryManager.ScanProgress.Idle -> stringResource(
+            R.string.local_library_idle,
+            quantityStringResource(R.plurals.local_library_items, progress.itemCount)
+        )
+        is LocalLibraryManager.ScanProgress.Scanning ->
+            stringResource(R.string.local_library_scanning_found_so_far, progress.itemsFound)
+        is LocalLibraryManager.ScanProgress.Matching ->
+            stringResource(R.string.library_scan_matching, progress.matched, progress.total)
+        is LocalLibraryManager.ScanProgress.Failed -> stringResource(R.string.library_scan_failed, progress.reason)
     }

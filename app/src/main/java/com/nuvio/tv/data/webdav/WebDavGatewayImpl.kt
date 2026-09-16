@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.webdav
 
+import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.data.locallibrary.subtitle.SubtitleFilenameParser
 import com.nuvio.tv.domain.model.Addon
@@ -21,18 +23,20 @@ import com.nuvio.tv.domain.model.webdav.WebDavMatch
 import com.nuvio.tv.domain.model.webdav.WebDavSource
 import com.nuvio.tv.domain.repository.WebDavGateway
 import com.nuvio.tv.domain.repository.WebDavGateway.Companion.ADDON_ID
-import com.nuvio.tv.domain.repository.WebDavGateway.Companion.ADDON_NAME
 import com.nuvio.tv.domain.repository.WebDavGateway.Companion.SYNTHETIC_BASE_URL
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 internal class WebDavGatewayImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val manager: WebDavManager,
     private val index: WebDavIndex
 ) : WebDavGateway {
+    private val addonName: String get() = context.getString(R.string.webdav_addon_name)
 
     override fun synthesizeAddon(): Flow<Addon?> =
         combine(manager.sources, manager.catalogRevision) { sources, revision ->
@@ -52,9 +56,11 @@ internal class WebDavGatewayImpl @Inject constructor(
         extraArgs: Map<String, String>
     ): NetworkResult<CatalogRow> {
         val parsed = WebDavCatalogId.parse(catalogId)
-            ?: return NetworkResult.Error("Unknown WebDAV catalog: $catalogId")
+            ?: return NetworkResult.Error(context.getString(R.string.webdav_error_unknown_catalog, catalogId))
         val source = manager.sources.value.firstOrNull { it.id == parsed.sourceId }
-            ?: return NetworkResult.Error("WebDAV source ${parsed.sourceId} is not configured")
+            ?: return NetworkResult.Error(
+                context.getString(R.string.webdav_error_source_not_configured, parsed.sourceId)
+            )
 
         val pageSize = skipStep.takeIf { it > 0 } ?: DEFAULT_PAGE_SIZE
         // Match the display name too: a query typed off the screen must find the item shown.
@@ -77,7 +83,7 @@ internal class WebDavGatewayImpl @Inject constructor(
         return NetworkResult.Success(
             CatalogRow(
                 addonId = ADDON_ID,
-                addonName = ADDON_NAME,
+                addonName = addonName,
                 addonBaseUrl = SYNTHETIC_BASE_URL,
                 catalogId = catalogId,
                 catalogName = catalogName(source, parsed.type),
@@ -108,7 +114,7 @@ internal class WebDavGatewayImpl @Inject constructor(
                     .onFailure { Log.w(TAG, "Could not build headers for ${match.sourceId}", it) }
                     .getOrDefault(emptyMap())
             }
-            val sourceName = sources[match.sourceId]?.displayName ?: ADDON_NAME
+            val sourceName = sources[match.sourceId]?.displayName ?: addonName
             selectFiles(folder, match, parts).forEach { file ->
                 streams += buildStream(file, folder, match, headers, sourceName)
             }
@@ -131,8 +137,8 @@ internal class WebDavGatewayImpl @Inject constructor(
         }
         return Addon(
             id = ADDON_ID,
-            name = ADDON_NAME,
-            displayName = ADDON_NAME,
+            name = addonName,
+            displayName = addonName,
             // The revision changes the manifest after a scan, which is how home rows know to refetch.
             version = "1.0.$revision",
             description = "Your debrid WebDAV library, mapped to your metadata addon",
@@ -151,7 +157,8 @@ internal class WebDavGatewayImpl @Inject constructor(
 
     /** One row per type, so the name carries the type to tell same-titled rows apart. */
     private fun catalogName(source: WebDavSource, type: ContentType): String =
-        "${source.displayName} · ${if (type == ContentType.MOVIE) "Movies" else "Series"}"
+        "${source.displayName} · " +
+            context.getString(if (type == ContentType.MOVIE) R.string.type_movies else R.string.type_series_plural)
 
     private fun WebDavMatch.toPreview(type: ContentType): MetaPreview = MetaPreview(
         id = contentId,
@@ -219,7 +226,7 @@ internal class WebDavGatewayImpl @Inject constructor(
             videoSize = file.sizeBytes,
             filename = file.fileName
         ),
-        addonName = ADDON_NAME,
+        addonName = addonName,
         addonLogo = null,
         externalSubtitles = sidecarSubtitles(folder, file, headers)
     )

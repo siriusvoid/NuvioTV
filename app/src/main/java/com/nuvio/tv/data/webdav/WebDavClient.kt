@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.webdav
 
+import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.data.locallibrary.subtitle.SubtitleFilenameParser
 import com.nuvio.tv.domain.model.webdav.WebDavConnectionResult
 
@@ -11,6 +13,7 @@ internal enum class WebDavExistence { PRESENT, GONE, UNKNOWN }
  * The WebDAV verbs this feature needs, over [WebDavHttp].
  */
 internal class WebDavClient(
+    private val context: Context,
     private val http: WebDavHttp,
     private val baseUrl: String,
     username: String,
@@ -76,7 +79,9 @@ internal class WebDavClient(
         listDirectory(path).fold(
             onSuccess = { WebDavConnectionResult.Success(it.size) },
             onFailure = { error ->
-                WebDavConnectionResult.Failure(error.message ?: "Could not reach the server")
+                WebDavConnectionResult.Failure(
+                    error.message ?: context.getString(R.string.webdav_could_not_reach_server)
+                )
             }
         )
 
@@ -116,26 +121,22 @@ internal class WebDavClient(
 
     /** Status code and server message, so a failed connection is diagnosable on screen. */
     private fun describeStatus(status: Int, body: String): String {
-        val explanation = when (status) {
-            401 -> "no credentials reached the server"
-            403 -> "the credentials were not accepted"
-            404 -> "that path does not exist"
-            405 -> "the server does not allow PROPFIND here"
-            429 -> "the server is rate limiting, try again shortly"
-            in 500..599 -> "the server had an internal error"
-            else -> "the request was rejected"
-        }
-        val serverMessage = serverMessageFrom(body)
-        return buildString {
-            append("HTTP ")
-            append(status)
-            append(" — ")
-            append(explanation)
-            if (serverMessage != null) {
-                append(". Server said: ")
-                append(serverMessage)
+        val explanation = context.getString(
+            when (status) {
+                401 -> R.string.webdav_http_401
+                403 -> R.string.webdav_http_403
+                404 -> R.string.webdav_http_404
+                405 -> R.string.webdav_http_405
+                429 -> R.string.webdav_http_429
+                in 500..599 -> R.string.webdav_http_5xx
+                else -> R.string.webdav_http_other
             }
-            append(".")
+        )
+        val serverMessage = serverMessageFrom(body)
+        return if (serverMessage != null) {
+            context.getString(R.string.webdav_http_error_with_message, status, explanation, serverMessage)
+        } else {
+            context.getString(R.string.webdav_http_error, status, explanation)
         }
     }
 

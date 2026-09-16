@@ -5,6 +5,7 @@ package com.nuvio.tv.ui.screens.settings.locallibrary
 import android.content.Context
 import android.os.Environment
 import androidx.activity.compose.BackHandler
+import androidx.annotation.PluralsRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,18 +29,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.screens.settings.settingsOptionRow
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 import java.io.File
 
 /** Frames to wait for a focus target to attach before giving up on it. */
@@ -52,7 +56,7 @@ fun FolderBrowser(
     onCancel: () -> Unit,
     /** What counts as an interesting file, reported in the header as a count. */
     fileMatcher: (String) -> Boolean = ::isVideoFileName,
-    fileNoun: String = "video file"
+    @PluralsRes filesHere: Int = R.plurals.folder_browser_video_files
 ) {
     val context = LocalContext.current
     val roots = remember { storageRoots(context) }
@@ -101,13 +105,15 @@ fun FolderBrowser(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
     ) {
+        val subfolders = quantityStringResource(R.plurals.folder_browser_subfolders, subDirs.size)
         SettingsDetailHeader(
-            title = current?.let { it.name.ifBlank { it.absolutePath } } ?: "Select storage",
+            title = current?.let { it.name.ifBlank { it.absolutePath } }
+                ?: stringResource(R.string.folder_browser_select_storage),
             subtitle = when {
-                current == null -> "Choose a drive, then open folders and press \"Use this folder\""
-                fileCount > 0 -> "${current?.absolutePath} · $fileCount $fileNoun(s) here · " +
-                    "${subDirs.size} subfolder(s)"
-                else -> "${current?.absolutePath} · ${subDirs.size} subfolder(s)"
+                current == null -> stringResource(R.string.folder_browser_choose_drive)
+                fileCount > 0 -> "${current?.absolutePath} · " +
+                    "${quantityStringResource(filesHere, fileCount)} · $subfolders"
+                else -> "${current?.absolutePath} · $subfolders"
             }
         )
 
@@ -127,7 +133,11 @@ fun FolderBrowser(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text(text = current?.let { "Use \"${it.name.ifBlank { it.absolutePath }}\"" } ?: "Use this folder")
+                Text(
+                    text = current?.let {
+                        stringResource(R.string.folder_browser_use_named, it.name.ifBlank { it.absolutePath })
+                    } ?: stringResource(R.string.folder_browser_use_this)
+                )
             }
             Button(
                 onClick = onCancel,
@@ -136,17 +146,17 @@ fun FolderBrowser(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         }
 
         SettingsGroupCard(
             modifier = Modifier.fillMaxWidth(),
-            title = "Folders"
+            title = stringResource(R.string.library_folders)
         ) {
             if (subDirs.isEmpty() && current != null) {
                 Text(
-                    text = "No subfolders — press \"Use this folder\" above to pick this one.",
+                    text = stringResource(R.string.folder_browser_no_subfolders),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary
                 )

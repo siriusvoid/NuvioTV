@@ -81,8 +81,7 @@ internal class WebDavSettingsViewModel @Inject constructor(
                     rootPath = rootPath
                 )
             ) {
-                is WebDavConnectionResult.Success ->
-                    AddResult.Message("Connected. Found ${result.entryCount} entries.")
+                is WebDavConnectionResult.Success -> AddResult.Connected(result.entryCount)
 
                 is WebDavConnectionResult.Failure -> AddResult.Failure(result.message)
             }
@@ -111,9 +110,7 @@ internal class WebDavSettingsViewModel @Inject constructor(
             )
             _addResult.value = result.fold(
                 onSuccess = { AddResult.Success },
-                onFailure = {
-                    AddResult.Failure(it.message ?: "Could not add the source.")
-                }
+                onFailure = { AddResult.Failure(it.message) }
             )
             _busy.value = false
         }
@@ -199,7 +196,8 @@ internal class WebDavSettingsViewModel @Inject constructor(
 
     sealed interface AddResult {
         data object Success : AddResult
-        data class Message(val text: String) : AddResult
-        data class Failure(val message: String) : AddResult
+        data class Connected(val entryCount: Int) : AddResult
+        /** A null [message] shows the generic failure text. */
+        data class Failure(val message: String?) : AddResult
     }
 }

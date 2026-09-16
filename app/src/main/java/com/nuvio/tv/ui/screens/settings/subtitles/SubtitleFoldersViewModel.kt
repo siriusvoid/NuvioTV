@@ -1,12 +1,16 @@
 package com.nuvio.tv.ui.screens.settings.subtitles
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitlePack
 import com.nuvio.tv.domain.model.subtitles.SubtitleFolderSource
 import com.nuvio.tv.domain.model.subtitles.SubtitleScanProgress
 import com.nuvio.tv.domain.model.subtitles.UnmatchedSubtitleFolder
 import com.nuvio.tv.domain.repository.ImportedSubtitleGateway
+import com.nuvio.tv.ui.util.quantityStringResource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +35,8 @@ class SubtitleFoldersViewModel @Inject constructor(
         viewModelScope.launch {
             importedSubtitles.addSource(path, displayName)
                 .onSuccess { _addError.value = null; onAdded() }
-                .onFailure { error -> _addError.value = error.message ?: "Could not add that folder." }
+                // Blank shows the generic failure text.
+                .onFailure { error -> _addError.value = error.message.orEmpty() }
         }
     }
 
@@ -53,12 +58,23 @@ class SubtitleFoldersViewModel @Inject constructor(
     }
 }
 
-/** "Scanning… 12 found" and friends, shared by the list and detail screens. */
+/** "Scanning… 12 releases found" and friends, shared by the list and detail screens. */
+@Composable
 internal fun scanStatusText(progress: SubtitleScanProgress?, source: SubtitleFolderSource, packs: Int, files: Int): String =
     when (progress) {
-        is SubtitleScanProgress.Scanning -> "Scanning… ${progress.foldersFound} release(s) found"
-        is SubtitleScanProgress.Matching -> "Matching ${progress.done}/${progress.total}"
-        is SubtitleScanProgress.Failed -> "Failed: ${progress.reason}"
+        is SubtitleScanProgress.Scanning ->
+            quantityStringResource(R.plurals.subtitle_folders_scanning, progress.foldersFound)
+        is SubtitleScanProgress.Matching -> stringResource(R.string.library_scan_matching, progress.done, progress.total)
+        is SubtitleScanProgress.Failed -> stringResource(R.string.library_scan_failed, progress.reason)
         SubtitleScanProgress.Idle, null ->
-            if (source.lastScanAt == null) "Not scanned yet" else "$packs release(s) · $files file(s)"
+            if (source.lastScanAt == null) {
+                stringResource(R.string.subtitle_folders_not_scanned)
+            } else {
+                releasesAndFiles(packs, files)
+            }
     }
+
+@Composable
+internal fun releasesAndFiles(packs: Int, files: Int): String =
+    quantityStringResource(R.plurals.subtitle_folders_releases, packs) + " · " +
+        quantityStringResource(R.plurals.library_files, files)

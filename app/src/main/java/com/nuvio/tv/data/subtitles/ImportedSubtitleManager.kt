@@ -1,7 +1,9 @@
 package com.nuvio.tv.data.subtitles
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.player.SubtitleCharsetDetector
 import com.nuvio.tv.data.local.ImportedSubtitleIndex
 import com.nuvio.tv.data.local.ImportedSubtitlePreferences
@@ -23,12 +25,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** Owns subtitle folders and their scans; scans run on the app scope so they outlive the screen. */
 @Singleton
 internal class ImportedSubtitleManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferences: ImportedSubtitlePreferences,
     private val scanner: ImportedSubtitleScanner
 ) : ImportedSubtitleGateway {
@@ -64,11 +68,11 @@ internal class ImportedSubtitleManager @Inject constructor(
     override suspend fun addSource(path: String, displayName: String): Result<SubtitleFolderSource> {
         val folder = File(path)
         if (!folder.isDirectory) {
-            return Result.failure(IllegalStateException("That folder is no longer readable."))
+            return Result.failure(IllegalStateException(context.getString(R.string.subtitle_folders_not_readable)))
         }
         val index = preferences.current()
         if (index.sources.any { it.path == folder.absolutePath }) {
-            return Result.failure(IllegalStateException("That folder is already added."))
+            return Result.failure(IllegalStateException(context.getString(R.string.subtitle_folders_already_added)))
         }
 
         val source = SubtitleFolderSource(
@@ -131,7 +135,9 @@ internal class ImportedSubtitleManager @Inject constructor(
             Log.w(TAG, "Scan of ${source.path} failed", error)
             publishProgress(
                 source.id,
-                SubtitleScanProgress.Failed(error.message ?: "Scan failed")
+                SubtitleScanProgress.Failed(
+                    error.message ?: context.getString(R.string.library_scan_failed_fallback)
+                )
             )
             return
         }

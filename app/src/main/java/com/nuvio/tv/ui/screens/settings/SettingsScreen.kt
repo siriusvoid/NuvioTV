@@ -234,16 +234,16 @@ private fun rememberSettingsSectionSpecs() = listOf(
     ),
     SettingsSectionSpec(
         category = SettingsCategory.LOCAL_LIBRARY,
-        title = "Local sources",
+        title = stringResource(R.string.settings_local_library_title),
         icon = Icons.Default.Folder,
-        subtitle = "Media folders on this device",
+        subtitle = stringResource(R.string.settings_local_library_subtitle),
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(
         category = SettingsCategory.WEBDAV_LIBRARY,
-        title = "WebDAV library",
+        title = stringResource(R.string.settings_webdav_title),
         icon = Icons.Default.CloudSync,
-        subtitle = "Debrid WebDAV shares",
+        subtitle = stringResource(R.string.settings_webdav_subtitle),
         destination = SettingsSectionDestination.External
     ),
     SettingsSectionSpec(

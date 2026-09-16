@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.network.safeApiCall
 import com.nuvio.tv.data.local.AddonPreferences
@@ -328,12 +329,12 @@ class AddonRepositoryImpl(
     override suspend fun fetchAddon(baseUrl: String): NetworkResult<Addon> {
         if (localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = baseUrl)) {
             val synthetic = localLibraryGateway.synthesizeAddon().first()
-                ?: return NetworkResult.Error("Local Library has no enabled sources")
+                ?: return NetworkResult.Error(context.getString(R.string.local_library_error_no_sources))
             return NetworkResult.Success(synthetic)
         }
         if (webDavGateway.isWebDavAddon(addonId = null, baseUrl = baseUrl)) {
             val synthetic = webDavGateway.synthesizeAddon().first()
-                ?: return NetworkResult.Error("WebDAV library has no enabled sources")
+                ?: return NetworkResult.Error(context.getString(R.string.webdav_error_no_sources))
             return NetworkResult.Success(synthetic)
         }
         val cleanBaseUrl = canonicalizeUrl(baseUrl)

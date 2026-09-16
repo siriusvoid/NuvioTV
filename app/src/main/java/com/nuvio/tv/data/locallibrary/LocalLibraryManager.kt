@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.locallibrary
 
+import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.data.local.LocalLibraryPreferences
 import com.nuvio.tv.data.local.MatchOverrideStore
 import com.nuvio.tv.data.locallibrary.match.FilenameParser
@@ -24,12 +26,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** Owns local sources and their scans; scans run on the app scope so they outlive the screen. */
 @Singleton
 class LocalLibraryManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferences: LocalLibraryPreferences,
     private val index: LocalLibraryIndex,
     private val overrideStore: MatchOverrideStore,
@@ -70,7 +74,7 @@ class LocalLibraryManager @Inject constructor(
         val source = sourceFactory.create(config)
         val test = source.testConnection()
         if (test.isFailure) {
-            throw test.exceptionOrNull() ?: IllegalStateException("Folder not accessible")
+            throw test.exceptionOrNull() ?: IllegalStateException(context.getString(R.string.local_library_folder_not_accessible))
         }
         preferences.upsert(config)
         kickoffScan(config)
@@ -161,7 +165,9 @@ class LocalLibraryManager @Inject constructor(
             source.scan().toList(collected)
         } catch (t: Throwable) {
             Log.e(TAG, "Scan failed for ${config.id}", t)
-            _scanProgress.value = _scanProgress.value + (config.id to ScanProgress.Failed(t.message ?: "Scan failed"))
+            _scanProgress.value = _scanProgress.value + (config.id to ScanProgress.Failed(
+                t.message ?: context.getString(R.string.library_scan_failed_fallback)
+            ))
             return
         }
         Log.i(TAG, "runScan scanned sourceId=${config.id} items=${collected.size}")

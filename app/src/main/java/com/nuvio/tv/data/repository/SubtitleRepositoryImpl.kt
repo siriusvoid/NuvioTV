@@ -2,6 +2,7 @@ package com.nuvio.tv.data.repository
 
 import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.network.safeApiCall
 import com.nuvio.tv.data.local.AddonPreferences
@@ -35,7 +36,6 @@ class SubtitleRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "SubtitleRepository"
         private const val PER_ADDON_TIMEOUT_MS = 20_000L
-        private const val IMPORTED_ADDON_NAME = "Imported subtitles"
     }
 
     override suspend fun getSubtitles(
@@ -162,7 +162,7 @@ class SubtitleRepositoryImpl @Inject constructor(
                 lang = match.pack.language,
                 // The folder tells one fansub group's translation from another.
                 addonName = File(match.pack.folderPath).name.takeIf { it.isNotBlank() }
-                    ?: IMPORTED_ADDON_NAME,
+                    ?: context.getString(R.string.subtitle_folders_addon_name),
                 addonLogo = null
             )
         }

@@ -172,7 +172,7 @@ class MetaRepositoryImpl @Inject constructor(
 
         // The WebDAV library serves no meta; its items keep the addon's ids, so the caller falls back to real addons.
         if (addonBaseUrl.startsWith(WebDavGateway.SYNTHETIC_BASE_URL)) {
-            emit(NetworkResult.Error("The WebDAV library does not serve metadata"))
+            emit(NetworkResult.Error(context.getString(R.string.webdav_error_no_metadata)))
             return@flow
         }
 

@@ -19,12 +19,16 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import com.nuvio.tv.R
 import com.nuvio.tv.data.webdav.WebDavSourceCounts
+import com.nuvio.tv.domain.model.webdav.PlacementStep
 import com.nuvio.tv.domain.model.webdav.ScanPhase
+import com.nuvio.tv.domain.model.webdav.WebDavProvider
 import com.nuvio.tv.domain.model.webdav.WebDavScanProgress
 import com.nuvio.tv.domain.model.webdav.WebDavSource
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
@@ -33,6 +37,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 
 @Composable
 internal fun WebDavSettingsScreen(
@@ -47,29 +52,26 @@ internal fun WebDavSettingsScreen(
     val anyScanning = state.progress.values.any { it.isRunning }
 
     SettingsStandaloneScaffold(
-        title = "WebDAV library",
-        subtitle = "Play what your debrid account already holds."
+        title = stringResource(R.string.settings_webdav_title),
+        subtitle = stringResource(R.string.webdav_screen_subtitle)
     ) {
         SettingsDetailHeader(
-            title = "Sources",
-            subtitle = "Each source is scanned and matched to your metadata addon, so its " +
-                "torrents appear as ordinary rows and as extra streams on titles you already have."
+            title = stringResource(R.string.library_sources),
+            subtitle = stringResource(R.string.webdav_sources_desc)
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
-                title = "Add source…",
-                subtitle = "Real-Debrid, TorBox or any WebDAV server",
+                title = stringResource(R.string.library_source_add),
+                subtitle = stringResource(R.string.webdav_add_source_sub),
                 leadingIcon = Icons.Default.CloudQueue,
                 onClick = onNavigateToAddSource
             )
             SettingsActionRow(
-                title = "Scan all sources",
-                subtitle = if (anyScanning) {
-                    "Scan in progress…"
-                } else {
-                    "Refresh the newest folders on every source"
-                },
+                title = stringResource(R.string.webdav_scan_all),
+                subtitle = stringResource(
+                    if (anyScanning) R.string.library_scanning_in_progress else R.string.webdav_scan_all_sub
+                ),
                 leadingIcon = Icons.Default.Refresh,
                 enabled = state.sources.isNotEmpty() && !anyScanning,
                 onClick = { viewModel.scanAll() }
@@ -82,7 +84,7 @@ internal fun WebDavSettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                title = "Configured sources"
+                title = stringResource(R.string.library_configured_sources)
             ) {
                 val listState = rememberLazyListState()
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -117,8 +119,8 @@ private fun SourceRow(
 ) {
     SettingsActionRow(
         title = source.displayName,
-        subtitle = "${source.provider.displayName} · ${statusTextFor(source, progress, counts)}",
-        value = if (source.enabled) null else "Disabled",
+        subtitle = "${source.provider.label()} · ${statusTextFor(source, progress, counts)}",
+        value = if (source.enabled) null else stringResource(R.string.library_disabled),
         valueColor = NuvioTheme.colors.TextTertiary,
         leadingIcon = Icons.Default.CloudSync,
         titleTrailingIcon = if (progress?.phase == ScanPhase.FAILED) {
@@ -132,24 +134,50 @@ private fun SourceRow(
 }
 
 /** One line covering both what a scan is doing and what the source already holds. */
+@Composable
 internal fun statusTextFor(
     source: WebDavSource,
     progress: WebDavScanProgress?,
     counts: WebDavSourceCounts?
 ): String = when (progress?.phase) {
-    ScanPhase.LISTING -> "Listing folders…"
-    ScanPhase.FOLDERS ->
-        "Scanning ${progress.foldersDone}/${progress.foldersPlanned} · " +
-            "${progress.filesFound} files"
+    ScanPhase.LISTING -> stringResource(R.string.webdav_listing_folders)
+    ScanPhase.FOLDERS -> stringResource(
+        R.string.webdav_scanning_progress,
+        progress.foldersDone,
+        progress.foldersPlanned,
+        quantityStringResource(R.plurals.library_files, progress.filesFound)
+    )
 
-    ScanPhase.MATCHING -> "Matching ${progress.matchesResolved}/${progress.foldersPlanned}"
-    ScanPhase.FAILED -> "Failed: ${progress.errorMessage.orEmpty()}"
+    ScanPhase.MATCHING ->
+        stringResource(R.string.library_scan_matching, progress.matchesResolved, progress.foldersPlanned)
+    ScanPhase.FAILED -> stringResource(R.string.library_scan_failed, progress.errorMessage.orEmpty())
     else -> {
         val folders = counts?.folders ?: 0
         if (source.lastScanAt == null && folders == 0) {
-            "Never scanned"
+            stringResource(R.string.webdav_never_scanned)
         } else {
-            "$folders folders · ${counts?.files ?: 0} files · ${counts?.matched ?: 0} matched"
+            listOf(
+                quantityStringResource(R.plurals.library_folders_count, folders),
+                quantityStringResource(R.plurals.library_files, counts?.files ?: 0),
+                stringResource(R.string.library_matched_count, counts?.matched ?: 0)
+            ).joinToString(" · ")
         }
     }
 }
+
+@Composable
+internal fun WebDavProvider.label(): String =
+    if (this == WebDavProvider.CUSTOM) stringResource(R.string.webdav_provider_custom) else displayName
+
+@Composable
+internal fun PlacementStep.label(): String = stringResource(
+    when (this) {
+        PlacementStep.EXPLICIT_SEASON_EPISODE -> R.string.webdav_placement_filename
+        PlacementStep.MAPPER_SEASON -> R.string.webdav_placement_mapper_season
+        PlacementStep.EPISODE_COUNT_FIT -> R.string.webdav_placement_episode_count
+        PlacementStep.AIR_DATE_ANCHOR -> R.string.webdav_placement_air_date
+        PlacementStep.FLATTENED_ABSOLUTE -> R.string.webdav_placement_flattened
+        PlacementStep.MANUAL -> R.string.webdav_placement_manual
+        PlacementStep.UNRESOLVED -> R.string.webdav_placement_unresolved
+    }
+)

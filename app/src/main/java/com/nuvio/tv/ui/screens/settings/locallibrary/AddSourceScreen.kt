@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,6 +35,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
@@ -59,8 +61,8 @@ fun AddSourceScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Add source",
-        subtitle = "Pick a folder on this device to scan for media."
+        title = stringResource(R.string.local_library_add_source_title),
+        subtitle = stringResource(R.string.local_library_add_source_desc)
     ) {
         LocalFileForm(viewModel, addResult)
     }
@@ -72,7 +74,8 @@ private fun LocalFileForm(
     addResult: LocalLibrarySettingsViewModel.AddResult?
 ) {
     val context = LocalContext.current
-    var displayName by remember { mutableStateOf("On-device files") }
+    val defaultName = stringResource(R.string.local_library_default_name)
+    var displayName by remember { mutableStateOf(defaultName) }
     var pickedPath by remember { mutableStateOf<String?>(null) }
     var showBrowser by remember { mutableStateOf(false) }
     var permissionDenied by remember { mutableStateOf(false) }
@@ -115,8 +118,8 @@ private fun LocalFileForm(
         FolderBrowser(
             onSelect = { folder ->
                 pickedPath = folder.absolutePath
-                if (displayName.isBlank() || displayName == "On-device files") {
-                    displayName = folder.name.ifBlank { "On-device files" }
+                if (displayName.isBlank() || displayName == defaultName) {
+                    displayName = folder.name.ifBlank { defaultName }
                 }
                 showBrowser = false
             },
@@ -132,13 +135,13 @@ private fun LocalFileForm(
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
     ) {
         SettingsDetailHeader(
-            title = "New source",
-            subtitle = "Name the source and choose the folder Nuvio should index."
+            title = stringResource(R.string.library_source_new),
+            subtitle = stringResource(R.string.local_library_new_source_desc)
         )
 
         SettingsGroupCard(
             modifier = Modifier.fillMaxWidth(),
-            title = "Source"
+            title = stringResource(R.string.library_source)
         ) {
             // One column owns every gap here; the group card's tight child spacing crowds the fields.
             Column(
@@ -146,12 +149,12 @@ private fun LocalFileForm(
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
             ) {
                 SettingsTextRow(
-                    label = "Display name",
+                    label = stringResource(R.string.library_display_name),
                     value = displayName,
                     onValueChange = { displayName = it }
                 )
                 Text(
-                    text = pickedPath ?: "No folder chosen yet.",
+                    text = pickedPath ?: stringResource(R.string.library_folder_none_chosen),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (pickedPath == null) {
                         NuvioTheme.colors.TextTertiary
@@ -161,8 +164,7 @@ private fun LocalFileForm(
                 )
                 if (permissionDenied) {
                     Text(
-                        text = "Storage permission is required to browse folders. " +
-                            "Grant it in Settings → Apps → Nuvio → Permissions.",
+                        text = stringResource(R.string.library_storage_permission_required),
                         style = MaterialTheme.typography.bodySmall,
                         color = NuvioTheme.colors.Error
                     )
@@ -186,12 +188,19 @@ private fun LocalFileForm(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text(if (pickedPath == null) "Choose folder…" else "Change folder…")
+                Text(
+                    stringResource(
+                        if (pickedPath == null) R.string.library_folder_choose else R.string.library_folder_change
+                    )
+                )
             }
             Button(
                 onClick = {
                     pickedPath?.let {
-                        viewModel.addLocalFile(displayName, Uri.fromFile(File(it)).toString())
+                        viewModel.addLocalFile(
+                            displayName.ifBlank { defaultName },
+                            Uri.fromFile(File(it)).toString()
+                        )
                     }
                 },
                 enabled = pickedPath != null,
@@ -201,7 +210,7 @@ private fun LocalFileForm(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Test & save")
+                Text(stringResource(R.string.library_test_and_save))
             }
         }
 
@@ -213,7 +222,7 @@ private fun LocalFileForm(
 private fun ResultBanner(result: LocalLibrarySettingsViewModel.AddResult?) {
     if (result is LocalLibrarySettingsViewModel.AddResult.Failure) {
         Text(
-            text = result.message,
+            text = result.message ?: stringResource(R.string.library_source_add_failed),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.Error
         )

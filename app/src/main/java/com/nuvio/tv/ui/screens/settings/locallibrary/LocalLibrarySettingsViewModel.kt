@@ -1,7 +1,9 @@
 package com.nuvio.tv.ui.screens.settings.locallibrary
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.R
 import com.nuvio.tv.data.locallibrary.LocalLibraryManager
 import com.nuvio.tv.data.locallibrary.match.FilenameParser
 import com.nuvio.tv.data.locallibrary.match.MediaMatcher
@@ -50,9 +52,9 @@ class LocalLibrarySettingsViewModel @Inject constructor(
 
     fun addLocalFile(displayName: String, treeUri: String) {
         viewModelScope.launch {
-            val result = manager.addLocalFile(displayName.ifBlank { "Local Files" }, treeUri)
+            val result = manager.addLocalFile(displayName, treeUri)
             _addResult.value = if (result.isSuccess) AddResult.Success
-            else AddResult.Failure(result.exceptionOrNull()?.message ?: "Failed")
+            else AddResult.Failure(result.exceptionOrNull()?.message)
         }
     }
 
@@ -119,13 +121,15 @@ class LocalLibrarySettingsViewModel @Inject constructor(
     fun findUnmatchedItem(sourceId: String, itemKey: String): ScannedItem? =
         _unmatched.value.firstOrNull { it.itemKey == itemKey && it.sourceId == sourceId }
 
-    fun kindLabel(kind: SourceKind): String = when (kind) {
-        SourceKind.LOCAL_FILE -> "On-device"
+    @StringRes
+    fun kindLabel(kind: SourceKind): Int = when (kind) {
+        SourceKind.LOCAL_FILE -> R.string.local_library_kind_on_device
     }
 
     sealed class AddResult {
         object Success : AddResult()
-        data class Failure(val message: String) : AddResult()
+        /** A null [message] shows the generic failure text. */
+        data class Failure(val message: String?) : AddResult()
     }
 
 }

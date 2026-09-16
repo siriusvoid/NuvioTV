@@ -21,11 +21,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.locallibrary.ScannedItem
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
@@ -73,14 +75,14 @@ fun ManualMatchPickerScreen(
     }
 
     if (item == null) {
-        SettingsStandaloneScaffold(title = "Pick match", subtitle = "") {
+        SettingsStandaloneScaffold(title = stringResource(R.string.local_library_pick_match), subtitle = "") {
             SettingsDetailHeader(
-                title = "Pick match",
-                subtitle = "This file is no longer waiting on a match."
+                title = stringResource(R.string.local_library_pick_match),
+                subtitle = stringResource(R.string.local_library_pick_match_gone)
             )
             SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Item no longer in unmatched list.",
+                    text = stringResource(R.string.local_library_pick_match_gone_detail),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary
                 )
@@ -90,17 +92,17 @@ fun ManualMatchPickerScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Pick match",
+        title = stringResource(R.string.local_library_pick_match),
         subtitle = item.fileName
     ) {
         SettingsDetailHeader(
-            title = "Top TMDB results",
-            subtitle = "${item.fileName} · selecting one stores a permanent override for this file."
+            title = stringResource(R.string.local_library_top_results),
+            subtitle = stringResource(R.string.local_library_top_results_desc, item.fileName)
         )
 
         SettingsGroupCard(
             modifier = Modifier.fillMaxWidth(),
-            title = "Search as"
+            title = stringResource(R.string.local_library_search_as)
         ) {
             val firstTypeFocusRequester = remember { FocusRequester() }
             Row(
@@ -110,19 +112,19 @@ fun ManualMatchPickerScreen(
                 horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
             ) {
                 SettingsToggleChip(
-                    label = "Series",
+                    label = stringResource(R.string.type_series),
                     selected = selectedType == ContentType.SERIES,
                     onClick = { selectedType = ContentType.SERIES },
                     modifier = Modifier.focusRequester(firstTypeFocusRequester)
                 )
                 SettingsToggleChip(
-                    label = "Movie",
+                    label = stringResource(R.string.type_movie),
                     selected = selectedType == ContentType.MOVIE,
                     onClick = { selectedType = ContentType.MOVIE }
                 )
                 if (selectedType == ContentType.SERIES) {
                     SettingsToggleChip(
-                        label = "Whole folder",
+                        label = stringResource(R.string.local_library_whole_folder),
                         selected = applyToFolder,
                         onClick = { applyToFolder = !applyToFolder }
                     )
@@ -134,11 +136,11 @@ fun ManualMatchPickerScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            title = "Candidates"
+            title = stringResource(R.string.library_candidates)
         ) {
             if (candidates.isEmpty()) {
                 Text(
-                    text = "No candidates returned. Try the other type above, or rename the file with a clear title.",
+                    text = stringResource(R.string.local_library_no_candidates),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary
                 )
@@ -155,7 +157,8 @@ fun ManualMatchPickerScreen(
                             candidates,
                             key = { _, candidate -> candidate.id }
                         ) { index, candidate ->
-                            val name = candidate.title ?: candidate.name ?: "Untitled"
+                            val name = candidate.title ?: candidate.name
+                                ?: stringResource(R.string.local_library_untitled)
                             val year = (candidate.releaseDate ?: candidate.firstAirDate)?.take(4)
                             SettingsActionRow(
                                 modifier = if (index == 0) {

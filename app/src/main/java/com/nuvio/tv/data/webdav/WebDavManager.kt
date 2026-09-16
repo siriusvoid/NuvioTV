@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.webdav
 
+import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.data.matching.ReleaseMatcher
 import com.nuvio.tv.data.local.WebDavPreferences
 import com.nuvio.tv.domain.model.webdav.PlacementStep
@@ -22,12 +24,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** Owns WebDAV sources, scans and matches, device-local; scans run on the app scope to outlive the screen. */
 @Singleton
 internal class WebDavManager @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferences: WebDavPreferences,
     private val index: WebDavIndex,
     private val http: WebDavHttp,
@@ -71,9 +75,9 @@ internal class WebDavManager @Inject constructor(
     ): WebDavConnectionResult {
         val normalizedBase = WebDavUrl.normalizeBaseUrl(baseUrl)
         if (normalizedBase.isBlank()) {
-            return WebDavConnectionResult.Failure("Enter the server address first.")
+            return WebDavConnectionResult.Failure(context.getString(R.string.webdav_enter_server_address))
         }
-        return WebDavClient(http, normalizedBase, username.trim(), password.trim())
+        return WebDavClient(context, http, normalizedBase, username.trim(), password.trim())
             .testConnection(WebDavUrl.normalizeRootPath(rootPath))
     }
 
@@ -91,7 +95,7 @@ internal class WebDavManager @Inject constructor(
         val trimmedPassword = password.trim()
         val normalizedRoot = WebDavUrl.normalizeRootPath(rootPath)
 
-        val test = WebDavClient(http, normalizedBase, effectiveUsername, trimmedPassword)
+        val test = WebDavClient(context, http, normalizedBase, effectiveUsername, trimmedPassword)
             .testConnection(normalizedRoot)
         if (test is WebDavConnectionResult.Failure) {
             return Result.failure(IllegalStateException(test.message))
@@ -133,7 +137,7 @@ internal class WebDavManager @Inject constructor(
     suspend fun playbackHeaders(sourceId: String): Map<String, String> {
         val source = source(sourceId) ?: return emptyMap()
         val password = preferences.password(sourceId)
-        return WebDavClient(http, source.baseUrl, source.username, password).playbackHeaders()
+        return WebDavClient(context, http, source.baseUrl, source.username, password).playbackHeaders()
     }
 
     /** Read from DataStore, not cached state, so a scan right after adding a source finds it. */
@@ -151,7 +155,7 @@ internal class WebDavManager @Inject constructor(
             publishProgress(sourceId) { it.copy(phase = ScanPhase.LISTING, errorMessage = null) }
 
             val password = preferences.password(sourceId)
-            val client = WebDavClient(http, source.baseUrl, source.username, password)
+            val client = WebDavClient(context, http, source.baseUrl, source.username, password)
             val scanner = WebDavScanner(source, client)
             val known = index.folders(sourceId).associateBy { it.path }
 
@@ -195,7 +199,8 @@ internal class WebDavManager @Inject constructor(
                     publishProgress(sourceId) {
                         it.copy(
                             phase = ScanPhase.FAILED,
-                            errorMessage = error.message ?: "The scan could not finish."
+                            errorMessage = error.message
+                                ?: context.getString(R.string.webdav_scan_could_not_finish)
                         )
                     }
                 }

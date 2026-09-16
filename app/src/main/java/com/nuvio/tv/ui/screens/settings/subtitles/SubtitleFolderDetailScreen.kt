@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,6 +30,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.subtitles.ImportedSubtitlePack
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
@@ -37,6 +39,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsToggleRow
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 import java.text.DateFormat
 import java.util.Date
 
@@ -64,9 +67,9 @@ fun SubtitleFolderDetailScreen(
     }
 
     if (source == null) {
-        SettingsStandaloneScaffold(title = "Subtitle folders", subtitle = "") {
+        SettingsStandaloneScaffold(title = stringResource(R.string.sub_imported), subtitle = "") {
             Text(
-                text = "This folder is no longer added.",
+                text = stringResource(R.string.subtitle_folders_removed),
                 style = MaterialTheme.typography.bodyMedium,
                 color = NuvioTheme.colors.TextSecondary
             )
@@ -79,7 +82,7 @@ fun SubtitleFolderDetailScreen(
     // MEDIUM date, SHORT time: the locale's wording without the seconds the default adds.
     val lastScan = source.lastScanAt?.let {
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))
-    } ?: "Never"
+    } ?: stringResource(R.string.library_never)
 
     SettingsStandaloneScaffold(
         title = source.displayName,
@@ -87,15 +90,21 @@ fun SubtitleFolderDetailScreen(
     ) {
         SettingsDetailHeader(
             title = source.displayName,
-            subtitle = "Last scan: $lastScan · ${sourcePacks.size} release(s) · " +
-                "${sourcePacks.sumOf { it.files.size }} file(s)" +
-                if (sourceUnmatched.isEmpty()) "" else " · ${sourceUnmatched.size} unmatched"
+            subtitle = listOfNotNull(
+                stringResource(R.string.library_last_scan, lastScan),
+                releasesAndFiles(sourcePacks.size, sourcePacks.sumOf { it.files.size }),
+                if (sourceUnmatched.isEmpty()) {
+                    null
+                } else {
+                    stringResource(R.string.subtitle_folders_unmatched_count, sourceUnmatched.size)
+                }
+            ).joinToString(" · ")
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsToggleRow(
-                title = "Enabled",
-                subtitle = "Offer these subtitles in the player.",
+                title = stringResource(R.string.library_enabled),
+                subtitle = stringResource(R.string.subtitle_folders_enabled_sub),
                 checked = source.enabled,
                 onToggle = { viewModel.setEnabled(sourceId, !source.enabled) }
             )
@@ -113,10 +122,10 @@ fun SubtitleFolderDetailScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            title = "Matched releases"
+            title = stringResource(R.string.subtitle_folders_matched_releases)
         ) {
             if (sourcePacks.isEmpty() && sourceUnmatched.isEmpty()) {
-                SettingsGroupNote(text = "Nothing found here yet. Rescan once the folder has files in it.")
+                SettingsGroupNote(text = stringResource(R.string.subtitle_folders_nothing_found))
             } else {
                 val listState = rememberLazyListState()
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -130,7 +139,10 @@ fun SubtitleFolderDetailScreen(
                         items(sourceUnmatched, key = { it.folderPath + it.releaseTitle }) { entry ->
                             ReleaseRow(
                                 title = entry.releaseTitle.ifBlank { entry.folderPath },
-                                detail = "${entry.fileCount} file(s) · not matched",
+                                detail = stringResource(
+                                    R.string.subtitle_folders_not_matched,
+                                    quantityStringResource(R.plurals.library_files, entry.fileCount)
+                                ),
                                 isError = true
                             )
                         }
@@ -151,7 +163,7 @@ fun SubtitleFolderDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Rescan now")
+                Text(stringResource(R.string.library_rescan_now))
             }
             Button(
                 onClick = { viewModel.removeSource(sourceId) },
@@ -160,13 +172,12 @@ fun SubtitleFolderDetailScreen(
                     contentColor = NuvioTheme.colors.Error
                 )
             ) {
-                Text("Remove folder")
+                Text(stringResource(R.string.subtitle_folders_remove))
             }
         }
 
         SettingsGroupNote(
-            text = "Removing a folder only drops Nuvio's index. Your subtitle files are never " +
-                "copied, moved or deleted."
+            text = stringResource(R.string.subtitle_folders_remove_note)
         )
     }
 }
@@ -177,8 +188,8 @@ private fun PackRow(pack: ImportedSubtitlePack) {
     ReleaseRow(
         title = pack.showName,
         detail = listOfNotNull(
-            season?.let { "Season $it" },
-            "${pack.matchedCount}/${pack.files.size} matched"
+            season?.let { stringResource(R.string.episodes_season, it) },
+            stringResource(R.string.subtitle_folders_pack_matched, pack.matchedCount, pack.files.size)
         ).joinToString(" · "),
         isError = pack.matchedCount == 0
     )

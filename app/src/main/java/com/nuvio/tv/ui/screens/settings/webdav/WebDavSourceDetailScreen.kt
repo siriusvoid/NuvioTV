@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -20,6 +21,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.webdav.WebDavSource
 import com.nuvio.tv.ui.screens.settings.SettingsChoiceChip
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
@@ -29,6 +31,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsToggleRow
 import com.nuvio.tv.ui.screens.settings.settingsOptionRow
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 import java.text.DateFormat
 import java.util.Date
 
@@ -44,9 +47,9 @@ internal fun WebDavSourceDetailScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val source = state.sources.firstOrNull { it.id == sourceId }
     if (source == null) {
-        SettingsStandaloneScaffold(title = "Source", subtitle = "") {
+        SettingsStandaloneScaffold(title = stringResource(R.string.library_source), subtitle = "") {
             Text(
-                text = "Source not found.",
+                text = stringResource(R.string.library_source_not_found),
                 style = MaterialTheme.typography.bodyMedium,
                 color = NuvioTheme.colors.TextSecondary
             )
@@ -61,22 +64,23 @@ internal fun WebDavSourceDetailScreen(
     // MEDIUM date, SHORT time: the locale's wording without the seconds the default adds.
     val lastScan = source.lastScanAt?.let {
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it))
-    } ?: "Never"
+    } ?: stringResource(R.string.library_never)
+    val providerLabel = source.provider.label()
 
     SettingsStandaloneScaffold(
         title = source.displayName,
-        subtitle = source.provider.displayName
+        subtitle = providerLabel
     ) {
         SettingsDetailHeader(
             title = source.displayName,
-            subtitle = "${source.provider.displayName} · Last scan: $lastScan · " +
-                "${counts?.folders ?: 0} folders indexed"
+            subtitle = "$providerLabel · ${stringResource(R.string.library_last_scan, lastScan)} · " +
+                quantityStringResource(R.plurals.webdav_folders_indexed, counts?.folders ?: 0)
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsToggleRow(
-                title = "Enabled",
-                subtitle = "Show this source's content in catalogs and offer its files as streams.",
+                title = stringResource(R.string.library_enabled),
+                subtitle = stringResource(R.string.webdav_enabled_sub),
                 checked = source.enabled,
                 onToggle = { viewModel.setEnabled(sourceId, !source.enabled) }
             )
@@ -84,9 +88,8 @@ internal fun WebDavSourceDetailScreen(
 
         SettingsGroupCard(
             modifier = Modifier.fillMaxWidth(),
-            title = "Scan window",
-            subtitle = "How many of the newest folders each scan refreshes. Older folders stay " +
-                "indexed; a larger window only costs time on the server."
+            title = stringResource(R.string.webdav_scan_window),
+            subtitle = stringResource(R.string.webdav_scan_window_desc)
         ) {
             WindowSizeRow(
                 source = source,
@@ -99,7 +102,7 @@ internal fun WebDavSourceDetailScreen(
         if (running || progress?.errorMessage != null) {
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
-                title = "Scan status"
+                title = stringResource(R.string.library_scan_status)
             ) {
                 SettingsGroupNote(text = statusTextFor(source, progress, counts))
             }
@@ -117,7 +120,7 @@ internal fun WebDavSourceDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text(if (running) "Scanning…" else "Scan now")
+                Text(stringResource(if (running) R.string.webdav_scanning else R.string.webdav_scan_now))
             }
             Button(
                 onClick = { onNavigateToReview(sourceId) },
@@ -126,7 +129,7 @@ internal fun WebDavSourceDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Review matches")
+                Text(stringResource(R.string.webdav_review_matches))
             }
             Button(
                 onClick = { viewModel.rebuild(sourceId) },
@@ -136,7 +139,7 @@ internal fun WebDavSourceDetailScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Rebuild index")
+                Text(stringResource(R.string.webdav_rebuild_index))
             }
             Button(
                 onClick = { viewModel.removeSource(sourceId) { onBackPress() } },
@@ -145,7 +148,7 @@ internal fun WebDavSourceDetailScreen(
                     contentColor = NuvioTheme.colors.Error
                 )
             ) {
-                Text("Remove source")
+                Text(stringResource(R.string.library_source_remove))
             }
         }
     }
@@ -173,7 +176,7 @@ private fun WindowSizeRow(
             modifier = Modifier.focusRequester(decrease)
         )
         Text(
-            text = "${source.windowSize} folders",
+            text = quantityStringResource(R.plurals.library_folders_count, source.windowSize),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.TextPrimary
         )

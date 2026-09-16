@@ -19,10 +19,12 @@ import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.subtitles.SubtitleScanProgress
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
@@ -51,25 +53,27 @@ fun SubtitleFoldersScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Subtitle folders",
-        subtitle = "Subtitle files stored on this device."
+        title = stringResource(R.string.sub_imported),
+        subtitle = stringResource(R.string.subtitle_folders_screen_subtitle)
     ) {
         SettingsDetailHeader(
-            title = "Folders",
-            subtitle = "Each folder is scanned and its releases matched to shows by their file " +
-                "names, then offered in the player's subtitle menu."
+            title = stringResource(R.string.library_folders),
+            subtitle = stringResource(R.string.subtitle_folders_desc)
         )
 
         SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
             SettingsActionRow(
-                title = "Add folder…",
-                subtitle = "On-device folder of subtitle files",
+                title = stringResource(R.string.subtitle_folders_add),
+                subtitle = stringResource(R.string.subtitle_folders_add_sub),
                 leadingIcon = Icons.Default.CreateNewFolder,
                 onClick = onNavigateToAddFolder
             )
             SettingsActionRow(
-                title = "Rescan all folders",
-                subtitle = if (anyScanning) "Scanning in progress…" else "Re-index every folder",
+                title = stringResource(R.string.subtitle_folders_rescan_all),
+                subtitle = stringResource(
+                    if (anyScanning) R.string.library_scanning_in_progress
+                    else R.string.subtitle_folders_rescan_all_sub
+                ),
                 leadingIcon = Icons.Default.Refresh,
                 enabled = sources.isNotEmpty() && !anyScanning,
                 onClick = { viewModel.rescanAll() }
@@ -79,8 +83,7 @@ fun SubtitleFoldersScreen(
         if (sources.isEmpty()) {
             SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
                 SettingsGroupNote(
-                    text = "Nothing added yet. Point Nuvio at the folder holding your subtitle " +
-                        "packs — one containing a folder per release is ideal."
+                    text = stringResource(R.string.subtitle_folders_empty)
                 )
             }
             return@SettingsStandaloneScaffold
@@ -90,7 +93,7 @@ fun SubtitleFoldersScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            title = "Added folders"
+            title = stringResource(R.string.subtitle_folders_added)
         ) {
             val listState = rememberLazyListState()
             Box(modifier = Modifier.fillMaxSize()) {
@@ -111,7 +114,7 @@ fun SubtitleFoldersScreen(
                                 packs = sourcePacks.size,
                                 files = sourcePacks.sumOf { it.files.size }
                             ),
-                            value = if (source.enabled) null else "Disabled",
+                            value = if (source.enabled) null else stringResource(R.string.library_disabled),
                             valueColor = NuvioTheme.colors.TextTertiary,
                             leadingIcon = Icons.Default.Subtitles,
                             titleTrailingIcon = if (sourceProgress is SubtitleScanProgress.Failed) {

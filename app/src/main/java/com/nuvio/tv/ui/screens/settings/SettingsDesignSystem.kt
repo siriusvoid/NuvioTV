@@ -1208,7 +1208,7 @@ internal fun SettingsTextRow(
     modifier: Modifier = Modifier,
     isPassword: Boolean = false,
     enabled: Boolean = true,
-    placeholder: String = "Tap to edit",
+    placeholder: String = stringResource(R.string.settings_text_row_placeholder),
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
 ) {
     var editing by remember { mutableStateOf(false) }

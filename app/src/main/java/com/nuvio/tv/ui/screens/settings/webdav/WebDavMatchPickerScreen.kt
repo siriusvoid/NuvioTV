@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -30,6 +31,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.webdav.WebDavMatch
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
@@ -41,6 +43,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsToggleChip
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.screens.settings.settingsOptionRow
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 
 @Composable
 internal fun WebDavMatchPickerScreen(
@@ -56,10 +59,10 @@ internal fun WebDavMatchPickerScreen(
     val row = rows.firstOrNull { it.folderKey == folderKey }
 
     if (row == null) {
-        SettingsStandaloneScaffold(title = "Fix match", subtitle = "") {
+        SettingsStandaloneScaffold(title = stringResource(R.string.webdav_fix_match), subtitle = "") {
             SettingsDetailHeader(
-                title = "Fix match",
-                subtitle = "This folder is no longer in the index."
+                title = stringResource(R.string.webdav_fix_match),
+                subtitle = stringResource(R.string.webdav_fix_match_gone)
             )
         }
         return
@@ -86,25 +89,28 @@ internal fun WebDavMatchPickerScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Fix match",
+        title = stringResource(R.string.webdav_fix_match),
         subtitle = row.folderName
     ) {
         SettingsDetailHeader(
-            title = row.match?.displayName ?: "Unmatched",
-            subtitle = "${row.folderName} · ${row.fileCount} files" +
-                (row.match?.let { " · ${it.placementStep.label}" } ?: "")
+            title = row.match?.displayName ?: stringResource(R.string.library_unmatched),
+            subtitle = listOfNotNull(
+                row.folderName,
+                quantityStringResource(R.plurals.library_files, row.fileCount),
+                row.match?.placementStep?.label()
+            ).joinToString(" · ")
         )
 
         SettingsGroupCard(
             modifier = Modifier.fillMaxWidth(),
-            title = "Search"
+            title = stringResource(R.string.webdav_search)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
             ) {
                 SettingsTextRow(
-                    label = "Title",
+                    label = stringResource(R.string.webdav_title),
                     value = query,
                     onValueChange = { query = it }
                 )
@@ -117,18 +123,18 @@ internal fun WebDavMatchPickerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SettingsToggleChip(
-                        label = if (searching) "Searching…" else "Search",
+                        label = stringResource(if (searching) R.string.webdav_searching else R.string.webdav_search),
                         selected = false,
                         onClick = { viewModel.search(query) },
                         modifier = Modifier.focusRequester(firstChip)
                     )
                     SettingsToggleChip(
-                        label = "Series",
+                        label = stringResource(R.string.type_series),
                         selected = !treatAsMovie,
                         onClick = { treatAsMovie = false }
                     )
                     SettingsToggleChip(
-                        label = "Movie",
+                        label = stringResource(R.string.type_movie),
                         selected = treatAsMovie,
                         onClick = { treatAsMovie = true }
                     )
@@ -143,17 +149,12 @@ internal fun WebDavMatchPickerScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            title = "Candidates",
-            subtitle = "Picking one stores a permanent override; rescans never overwrite it."
+            title = stringResource(R.string.library_candidates),
+            subtitle = stringResource(R.string.webdav_candidates_desc)
         ) {
             if (results.isEmpty()) {
                 SettingsGroupNote(
-                    text = if (searching) {
-                        "Searching…"
-                    } else {
-                        "No candidates. Try a shorter title — release tags and group names " +
-                            "confuse the anime databases."
-                    }
+                    text = stringResource(if (searching) R.string.webdav_searching else R.string.webdav_no_candidates)
                 )
             } else {
                 val listState = rememberLazyListState()
@@ -168,6 +169,10 @@ internal fun WebDavMatchPickerScreen(
                             results,
                             key = { _, hit -> "${hit.source}:${hit.id}" }
                         ) { index, hit ->
+                            val type = animeTypeLabel(hit.subtype)
+                            val episodes = hit.episodeCount?.let {
+                                quantityStringResource(R.plurals.webdav_episodes, it)
+                            }
                             SettingsActionRow(
                                 modifier = if (index == 0) {
                                     Modifier.focusRequester(firstResultFocusRequester)
@@ -176,8 +181,8 @@ internal fun WebDavMatchPickerScreen(
                                 },
                                 title = hit.title,
                                 subtitle = buildString {
-                                    append(hit.subtype ?: "TV")
-                                    hit.episodeCount?.let { append(" · ").append(it).append(" episodes") }
+                                    append(type)
+                                    episodes?.let { append(" · ").append(it) }
                                     hit.alternativeTitles.firstOrNull()
                                         ?.takeIf { it != hit.title }
                                         ?.let { append(" · ").append(it) }
@@ -210,7 +215,7 @@ internal fun WebDavMatchPickerScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text("Match again")
+                Text(stringResource(R.string.webdav_match_again))
             }
             Button(
                 onClick = { viewModel.toggleExcluded(row) },
@@ -220,10 +225,26 @@ internal fun WebDavMatchPickerScreen(
                     contentColor = NuvioTheme.colors.TextPrimary
                 )
             ) {
-                Text(if (row.match?.excluded == true) "Include folder" else "Exclude folder")
+                Text(
+                    stringResource(
+                        if (row.match?.excluded == true) R.string.webdav_include_folder
+                        else R.string.webdav_exclude_folder
+                    )
+                )
             }
         }
     }
+}
+
+/** Kitsu and MyAnimeList type names; values not listed pass through as sent. */
+@Composable
+private fun animeTypeLabel(subtype: String?): String = when (subtype?.lowercase()) {
+    null, "tv" -> stringResource(R.string.webdav_anime_type_tv)
+    "movie" -> stringResource(R.string.type_movie)
+    "special" -> stringResource(R.string.webdav_anime_type_special)
+    "tv special" -> stringResource(R.string.webdav_anime_type_tv_special)
+    "music" -> stringResource(R.string.webdav_anime_type_music)
+    else -> subtype.orEmpty()
 }
 
 /** The folder's season; unset keeps the matcher's answer. */
@@ -238,7 +259,7 @@ private fun SeasonRow(season: Int?, onChange: (Int?) -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Season",
+            text = stringResource(R.string.webdav_season),
             style = MaterialTheme.typography.labelLarge,
             color = NuvioTheme.colors.TextSecondary
         )
@@ -249,7 +270,7 @@ private fun SeasonRow(season: Int?, onChange: (Int?) -> Unit) {
             modifier = Modifier.focusRequester(decrease)
         )
         Text(
-            text = season?.toString() ?: "Auto",
+            text = season?.toString() ?: stringResource(R.string.webdav_season_auto),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.TextPrimary
         )
@@ -259,7 +280,7 @@ private fun SeasonRow(season: Int?, onChange: (Int?) -> Unit) {
             onClick = { onChange((season ?: 0) + 1) }
         )
         SettingsToggleChip(
-            label = "Auto",
+            label = stringResource(R.string.webdav_season_auto),
             selected = season == null,
             onClick = { onChange(null) }
         )

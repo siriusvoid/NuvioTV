@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -29,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
 import com.nuvio.tv.ui.screens.settings.SettingsGroupCard
@@ -68,18 +70,18 @@ fun ManualMatchListScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Manual match",
-        subtitle = "Files that auto-matching couldn't confidently resolve."
+        title = stringResource(R.string.local_library_manual_match),
+        subtitle = stringResource(R.string.local_library_manual_match_desc)
     ) {
         SettingsDetailHeader(
-            title = "Unmatched (${unmatched.size})",
-            subtitle = "Pick a file to choose its TMDB match. Manual picks persist across rescans."
+            title = stringResource(R.string.local_library_unmatched_count, unmatched.size),
+            subtitle = stringResource(R.string.local_library_unmatched_desc)
         )
 
         if (unmatched.isEmpty()) {
             SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Nothing to do — every file is matched.",
+                    text = stringResource(R.string.local_library_all_matched),
                     style = MaterialTheme.typography.bodyMedium,
                     color = NuvioTheme.colors.TextSecondary
                 )
@@ -110,14 +112,15 @@ fun ManualMatchListScreen(
                                 },
                                 title = item.fileName,
                                 subtitle = item.parsedTitle?.let { parsed ->
-                                    buildString {
-                                        append(parsed)
-                                        item.parsedYear?.let { append(" · ", it.toString()) }
+                                    listOfNotNull(
+                                        parsed,
+                                        item.parsedYear?.toString(),
                                         item.parsedSeason?.let { season ->
-                                            append(" · S", season)
-                                            item.parsedEpisode?.let { episode -> append("E", episode) }
+                                            item.parsedEpisode?.let { episode ->
+                                                stringResource(R.string.season_episode_format, season, episode)
+                                            } ?: stringResource(R.string.ratings_season_label, season)
                                         }
-                                    }
+                                    ).joinToString(" · ")
                                 },
                                 leadingIcon = Icons.Default.Movie,
                                 onClick = { onNavigateToPicker(item.sourceId, item.itemKey) }

@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
@@ -26,6 +27,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.webdav.WebDavProvider
 import com.nuvio.tv.ui.screens.settings.SettingsChoiceChip
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
@@ -36,6 +38,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsToggleChip
 import com.nuvio.tv.ui.screens.settings.SettingsVerbatimKeyboard
 import com.nuvio.tv.ui.screens.settings.settingsOptionRow
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 
 @Composable
 internal fun AddWebDavSourceScreen(
@@ -66,6 +69,7 @@ internal fun AddWebDavSourceScreen(
     var password by rememberSaveable { mutableStateOf("") }
 
     val provider = WebDavProvider.fromId(providerId)
+    val providerLabel = provider.label()
     val firstProviderChip = remember { FocusRequester() }
 
     fun applyProvider(next: WebDavProvider) {
@@ -77,8 +81,8 @@ internal fun AddWebDavSourceScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Add WebDAV source",
-        subtitle = "Point Nuvio at a debrid WebDAV share."
+        title = stringResource(R.string.webdav_add_title),
+        subtitle = stringResource(R.string.webdav_add_desc)
     ) {
         Column(
             modifier = Modifier
@@ -87,13 +91,13 @@ internal fun AddWebDavSourceScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
         ) {
             SettingsDetailHeader(
-                title = "New source",
-                subtitle = "Pick a provider to fill in its address, then enter your credentials."
+                title = stringResource(R.string.library_source_new),
+                subtitle = stringResource(R.string.webdav_new_source_desc)
             )
 
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
-                title = "Provider"
+                title = stringResource(R.string.webdav_provider)
             ) {
                 Row(
                     modifier = Modifier
@@ -103,7 +107,7 @@ internal fun AddWebDavSourceScreen(
                 ) {
                     WebDavProvider.entries.forEachIndexed { index, option ->
                         SettingsToggleChip(
-                            label = option.displayName,
+                            label = option.label(),
                             selected = option == provider,
                             onClick = { applyProvider(option) },
                             modifier = if (index == 0) {
@@ -118,7 +122,7 @@ internal fun AddWebDavSourceScreen(
 
             SettingsGroupCard(
                 modifier = Modifier.fillMaxWidth(),
-                title = "Connection"
+                title = stringResource(R.string.webdav_connection)
             ) {
                 // One column owns every gap here; the group card's tight child spacing crowds the fields.
                 Column(
@@ -126,33 +130,35 @@ internal fun AddWebDavSourceScreen(
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
                 ) {
                     SettingsTextRow(
-                        label = "Display name",
+                        label = stringResource(R.string.library_display_name),
                         value = displayName,
                         onValueChange = { displayName = it },
-                        placeholder = provider.displayName
+                        placeholder = providerLabel
                     )
                     SettingsTextRow(
-                        label = "Server address",
+                        label = stringResource(R.string.webdav_server_address),
                         value = baseUrl,
                         onValueChange = { baseUrl = it },
                         keyboardOptions = SettingsVerbatimKeyboard
                     )
                     SettingsTextRow(
-                        label = "Folder path",
+                        label = stringResource(R.string.webdav_folder_path),
                         value = rootPath,
                         onValueChange = { rootPath = it },
-                        placeholder = "Server root",
+                        placeholder = stringResource(R.string.webdav_server_root),
                         keyboardOptions = SettingsVerbatimKeyboard
                     )
                     SettingsTextRow(
-                        label = "Username",
+                        label = stringResource(R.string.webdav_username),
                         value = username,
                         onValueChange = { username = it },
                         enabled = provider.fixedUsername == null,
                         keyboardOptions = SettingsVerbatimKeyboard
                     )
                     SettingsTextRow(
-                        label = if (provider == WebDavProvider.TORBOX) "API key" else "Password",
+                        label = stringResource(
+                            if (provider == WebDavProvider.TORBOX) R.string.webdav_api_key else R.string.webdav_password
+                        ),
                         value = password,
                         onValueChange = { password = it },
                         isPassword = true,
@@ -160,14 +166,13 @@ internal fun AddWebDavSourceScreen(
                     )
                     if (provider == WebDavProvider.TORBOX) {
                         Text(
-                            text = "TorBox signs in with your API key as the password, " +
-                                "with a fixed username.",
+                            text = stringResource(R.string.webdav_torbox_note),
                             style = MaterialTheme.typography.bodySmall,
                             color = NuvioTheme.colors.TextSecondary
                         )
                         if (storedTorboxApiKey.isNotBlank() && password != storedTorboxApiKey) {
                             SettingsChoiceChip(
-                                label = "Use the key from Debrid settings",
+                                label = stringResource(R.string.webdav_use_debrid_key),
                                 selected = false,
                                 onClick = { password = storedTorboxApiKey }
                             )
@@ -199,13 +204,13 @@ internal fun AddWebDavSourceScreen(
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text(if (busy) "Working…" else "Test connection")
+                    Text(stringResource(if (busy) R.string.webdav_working else R.string.webdav_test_connection))
                 }
                 Button(
                     onClick = {
                         viewModel.addSource(
                             provider = provider,
-                            displayName = displayName,
+                            displayName = displayName.ifBlank { providerLabel },
                             baseUrl = baseUrl,
                             username = username,
                             password = password,
@@ -218,7 +223,7 @@ internal fun AddWebDavSourceScreen(
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text("Test & save")
+                    Text(stringResource(R.string.library_test_and_save))
                 }
             }
         }
@@ -229,13 +234,13 @@ internal fun AddWebDavSourceScreen(
 private fun ResultBanner(result: WebDavSettingsViewModel.AddResult?) {
     when (result) {
         is WebDavSettingsViewModel.AddResult.Failure -> Text(
-            text = result.message,
+            text = result.message ?: stringResource(R.string.library_source_add_failed),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.Error
         )
 
-        is WebDavSettingsViewModel.AddResult.Message -> Text(
-            text = result.text,
+        is WebDavSettingsViewModel.AddResult.Connected -> Text(
+            text = quantityStringResource(R.plurals.webdav_connected, result.entryCount),
             style = MaterialTheme.typography.bodyMedium,
             color = NuvioTheme.colors.TextSecondary
         )

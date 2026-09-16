@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,6 +34,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.core.storage.AllFilesAccess
 import com.nuvio.tv.domain.model.subtitles.isSubtitleFileName
 import com.nuvio.tv.ui.screens.settings.SettingsDetailHeader
@@ -129,8 +131,8 @@ fun AddSubtitleFolderScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Add subtitle folder",
-        subtitle = "Pick a folder on this device to scan for subtitle files."
+        title = stringResource(R.string.subtitle_folders_add_title),
+        subtitle = stringResource(R.string.subtitle_folders_add_desc)
     ) {
         if (showBrowser) {
             FolderBrowser(
@@ -141,7 +143,7 @@ fun AddSubtitleFolderScreen(
                 },
                 onCancel = { showBrowser = false },
                 fileMatcher = { it.isSubtitleFileName() },
-                fileNoun = "subtitle file"
+                filesHere = R.plurals.folder_browser_subtitle_files
             )
             return@SettingsStandaloneScaffold
         }
@@ -153,23 +155,22 @@ fun AddSubtitleFolderScreen(
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
         ) {
             SettingsDetailHeader(
-                title = "New folder",
-                subtitle = "Point Nuvio at the folder holding your subtitle packs. Everything " +
-                    "below it is scanned, so a parent folder of many releases is fine."
+                title = stringResource(R.string.subtitle_folders_new),
+                subtitle = stringResource(R.string.subtitle_folders_new_desc)
             )
 
-            SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "Folder") {
+            SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = stringResource(R.string.subtitle_folders_folder)) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
                 ) {
                     SettingsTextRow(
-                        label = "Display name",
+                        label = stringResource(R.string.library_display_name),
                         value = displayName,
                         onValueChange = { displayName = it }
                     )
                     Text(
-                        text = pickedPath ?: "No folder chosen yet.",
+                        text = pickedPath ?: stringResource(R.string.library_folder_none_chosen),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (pickedPath == null) {
                             NuvioTheme.colors.TextTertiary
@@ -179,31 +180,30 @@ fun AddSubtitleFolderScreen(
                     )
                     addError?.let { error ->
                         Text(
-                            text = error,
+                            text = error.ifBlank { stringResource(R.string.subtitle_folders_add_failed) },
                             style = MaterialTheme.typography.bodySmall,
                             color = NuvioTheme.colors.Error
                         )
                     }
                     if (permissionDenied) {
                         Text(
-                            text = "Storage permission is required to browse folders. " +
-                                "Grant it in Settings → Apps → Nuvio → Permissions.",
+                            text = stringResource(R.string.library_storage_permission_required),
                             style = MaterialTheme.typography.bodySmall,
                             color = NuvioTheme.colors.Error
                         )
                     }
                     if (needsAllFilesAccess) {
                         Text(
-                            text = "Nuvio needs \"All files access\" to read subtitle files: " +
-                                "Android grants it video files only. Turn it on for Nuvio, then " +
-                                "choose the folder again.",
+                            text = stringResource(R.string.subtitle_folders_all_files_access),
                             style = MaterialTheme.typography.bodySmall,
                             color = NuvioTheme.colors.Error
                         )
                         if (grantScreenMissing) {
                             Text(
-                                text = "This device has no All files access screen. Grant it over " +
-                                    "adb instead:\n${AllFilesAccess.adbCommand(context)}",
+                                text = stringResource(
+                                    R.string.subtitle_folders_all_files_access_adb,
+                                    AllFilesAccess.adbCommand(context)
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NuvioTheme.colors.TextSecondary
                             )
@@ -223,7 +223,11 @@ fun AddSubtitleFolderScreen(
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text(if (pickedPath == null) "Choose folder…" else "Change folder…")
+                    Text(
+                        stringResource(
+                            if (pickedPath == null) R.string.library_folder_choose else R.string.library_folder_change
+                        )
+                    )
                 }
                 Button(
                     onClick = {
@@ -236,7 +240,7 @@ fun AddSubtitleFolderScreen(
                         contentColor = NuvioTheme.colors.TextPrimary
                     )
                 ) {
-                    Text("Add and scan")
+                    Text(stringResource(R.string.subtitle_folders_add_and_scan))
                 }
             }
         }

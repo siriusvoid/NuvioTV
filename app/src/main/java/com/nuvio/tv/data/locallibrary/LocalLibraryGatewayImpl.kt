@@ -1,6 +1,8 @@
 package com.nuvio.tv.data.locallibrary
 
+import android.content.Context
 import android.util.Log
+import com.nuvio.tv.R
 import com.nuvio.tv.core.network.NetworkResult
 import com.nuvio.tv.core.tmdb.TmdbEnrichment
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
@@ -29,6 +31,7 @@ import com.nuvio.tv.domain.repository.LocalLibraryGateway.Companion.LOCAL_ID_PRE
 import com.nuvio.tv.domain.repository.LocalLibraryGateway.Companion.SYNTHETIC_BASE_URL
 import com.nuvio.tv.domain.repository.MetaRepository
 import dagger.Lazy
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -42,6 +45,7 @@ import javax.inject.Singleton
 
 @Singleton
 class LocalLibraryGatewayImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val preferences: LocalLibraryPreferences,
     private val index: LocalLibraryIndex,
     private val overrideStore: MatchOverrideStore,
@@ -51,6 +55,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
     // Lazy to break the DI cycle: MetaRepository depends on this gateway.
     private val metaRepository: Lazy<MetaRepository>
 ) : LocalLibraryGateway {
+    private val addonName: String get() = context.getString(R.string.local_library_addon_name)
 
     override fun synthesizeAddon(): Flow<Addon?> =
         preferences.sources.map { configs ->
@@ -81,9 +86,11 @@ class LocalLibraryGatewayImpl @Inject constructor(
         skipStep: Int
     ): NetworkResult<CatalogRow> {
         val parsed = CatalogId.parse(catalogId)
-            ?: return NetworkResult.Error("Unknown local catalog: $catalogId")
+            ?: return NetworkResult.Error(context.getString(R.string.local_library_error_unknown_catalog, catalogId))
         val source = preferences.sources.first().firstOrNull { it.id == parsed.sourceId }
-            ?: return NetworkResult.Error("Source ${parsed.sourceId} not configured")
+            ?: return NetworkResult.Error(
+                context.getString(R.string.local_library_error_source_not_configured, parsed.sourceId)
+            )
 
         val previews = buildPreviewsForSource(source, parsed.type)
         val paged = previews.drop(skip).take(skipStep.takeIf { it > 0 } ?: 100)
@@ -91,7 +98,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
         return NetworkResult.Success(
             CatalogRow(
                 addonId = ADDON_ID,
-                addonName = ADDON_NAME,
+                addonName = addonName,
                 addonBaseUrl = SYNTHETIC_BASE_URL,
                 catalogId = catalogId,
                 catalogName = source.displayName,
@@ -107,7 +114,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
 
     override suspend fun meta(type: String, id: String): NetworkResult<Meta> {
         val parsedId = MetaId.parse(id)
-            ?: return NetworkResult.Error("Unknown local id: $id")
+            ?: return NetworkResult.Error(context.getString(R.string.local_library_error_unknown_id, id))
         return when (parsedId) {
             is MetaId.Movie -> resolveMovieMeta(parsedId.tmdbId)
             is MetaId.Series -> resolveSeriesMeta(parsedId.tmdbId)
@@ -122,7 +129,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
     ): NetworkResult<List<Stream>> {
         val resolution = resolveExternalId(type, id)
             ?: return if (id.startsWith(LOCAL_ID_PREFIX)) {
-                NetworkResult.Error("Unknown local id: $id")
+                NetworkResult.Error(context.getString(R.string.local_library_error_unknown_id, id))
             } else {
                 // Unresolvable foreign id: return empty so this addon isn't reported as failing.
                 NetworkResult.Success(emptyList())
@@ -161,7 +168,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
                         filename = item.fileName
                     )
                 } else null,
-                addonName = ADDON_NAME,
+                addonName = addonName,
                 addonLogo = null,
                 externalSubtitles = resolved.subtitles.map { sub ->
                     ExternalSubtitle(
@@ -199,8 +206,8 @@ class LocalLibraryGatewayImpl @Inject constructor(
         }
         return Addon(
             id = ADDON_ID,
-            name = ADDON_NAME,
-            displayName = ADDON_NAME,
+            name = addonName,
+            displayName = addonName,
             version = "1.0.0",
             description = "Your on-device media library",
             logo = null,
@@ -297,7 +304,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
             )
         }
         val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId.toString(), ContentType.MOVIE)
-            ?: return NetworkResult.Error("TMDB enrichment missing for movie $tmdbId")
+            ?: return NetworkResult.Error(context.getString(R.string.local_library_error_tmdb_movie, tmdbId))
         return NetworkResult.Success(
             buildMeta(tmdbId, ContentType.MOVIE, enrichment, videos = emptyList())
         )
@@ -326,7 +333,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
             )
         }
         val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId.toString(), ContentType.SERIES)
-            ?: return NetworkResult.Error("TMDB enrichment missing for series $tmdbId")
+            ?: return NetworkResult.Error(context.getString(R.string.local_library_error_tmdb_series, tmdbId))
         return NetworkResult.Success(buildMeta(tmdbId, ContentType.SERIES, enrichment, localEpisodes))
     }
 
@@ -343,7 +350,7 @@ class LocalLibraryGatewayImpl @Inject constructor(
                 val episode = match.episode ?: item.parsedEpisode ?: return@forEach
                 episodes += Video(
                     id = MetaId.formatEpisode(tmdbId, season, episode),
-                    title = "Episode $episode",
+                    title = "${context.getString(R.string.episodes_episode)} $episode",
                     released = null,
                     thumbnail = null,
                     season = season,
@@ -491,7 +498,6 @@ class LocalLibraryGatewayImpl @Inject constructor(
 
     companion object {
         private const val TAG = "LocalLibraryGateway"
-        private const val ADDON_NAME = "Local Library"
         private const val PREVIEW_LOOKUP_CONCURRENCY = 4
     }
 

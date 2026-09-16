@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -31,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.nuvio.tv.R
 import com.nuvio.tv.domain.model.webdav.PlacementStep
 import com.nuvio.tv.domain.model.webdav.WebDavReviewRow
 import com.nuvio.tv.ui.screens.settings.SettingsActionRow
@@ -40,6 +42,7 @@ import com.nuvio.tv.ui.screens.settings.SettingsGroupNote
 import com.nuvio.tv.ui.screens.settings.SettingsStandaloneScaffold
 import com.nuvio.tv.ui.screens.settings.SettingsVerticalScrollIndicators
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.quantityStringResource
 
 /** Below this, a resolved match is still surfaced for review: a misplaced episode corrupts watch progress. */
 private const val LOW_CONFIDENCE = 0.75f
@@ -73,17 +76,17 @@ internal fun WebDavReviewScreen(
     }
 
     SettingsStandaloneScaffold(
-        title = "Review matches",
-        subtitle = "Check what each torrent folder was matched to."
+        title = stringResource(R.string.webdav_review_matches),
+        subtitle = stringResource(R.string.webdav_review_desc)
     ) {
         SettingsDetailHeader(
-            title = "Folders (${rows.size})",
-            subtitle = "Unmatched and uncertain folders come first. Manual picks survive rescans."
+            title = stringResource(R.string.webdav_review_folders_count, rows.size),
+            subtitle = stringResource(R.string.webdav_review_folders_desc)
         )
 
         if (rows.isEmpty()) {
             SettingsGroupCard(modifier = Modifier.fillMaxWidth()) {
-                SettingsGroupNote(text = "Nothing indexed yet. Scan the source first.")
+                SettingsGroupNote(text = stringResource(R.string.webdav_review_empty))
             }
             return@SettingsStandaloneScaffold
         }
@@ -107,7 +110,7 @@ internal fun WebDavReviewScreen(
                         if (bucketRows.isEmpty()) return@forEach
                         item(key = "heading-$heading") {
                             Text(
-                                text = "${heading.uppercase()} (${bucketRows.size})",
+                                text = "${stringResource(heading).uppercase()} (${bucketRows.size})",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = NuvioTheme.colors.TextTertiary
                             )
@@ -143,19 +146,21 @@ private fun ReviewRow(
 ) {
     val match = row.match
     val summary = when {
-        match == null -> "Unmatched"
-        match.excluded -> "Excluded · ${match.displayName}"
-        else -> buildString {
-            append(match.displayName)
-            match.season?.let { append(" · S").append(it) }
-            append(" · ").append(match.placementStep.label)
+        match == null -> stringResource(R.string.library_unmatched)
+        match.excluded -> stringResource(R.string.webdav_review_excluded, match.displayName)
+        else -> {
+            listOfNotNull(
+                match.displayName,
+                match.season?.let { stringResource(R.string.ratings_season_label, it) },
+                match.placementStep.label()
+            ).joinToString(" · ")
         }
     }
 
     SettingsActionRow(
         modifier = modifier,
         title = row.folderName,
-        subtitle = "${row.fileCount} files · $summary",
+        subtitle = "${quantityStringResource(R.plurals.library_files, row.fileCount)} · $summary",
         leadingIcon = when {
             match == null -> Icons.Default.HelpOutline
             match.excluded -> Icons.Default.VisibilityOff
@@ -168,7 +173,7 @@ private fun ReviewRow(
 }
 
 /** Unresolved, then weakly resolved, then settled. */
-private fun bucket(rows: List<WebDavReviewRow>): List<Pair<String, List<WebDavReviewRow>>> {
+private fun bucket(rows: List<WebDavReviewRow>): List<Pair<Int, List<WebDavReviewRow>>> {
     val unmatched = rows.filter {
         it.match == null || it.match.placementStep == PlacementStep.UNRESOLVED
     }
@@ -183,8 +188,8 @@ private fun bucket(rows: List<WebDavReviewRow>): List<Pair<String, List<WebDavRe
     val settled = rows.filterNot { it.folderKey in settledKeys }
 
     return listOf(
-        "Unmatched" to unmatched,
-        "Worth checking" to uncertain,
-        "Matched" to settled
+        R.string.library_unmatched to unmatched,
+        R.string.webdav_review_worth_checking to uncertain,
+        R.string.webdav_review_matched to settled
     )
 }
