@@ -2795,6 +2795,13 @@ class MetaDetailsViewModel @Inject constructor(
     private fun fetchTrailerUrl() {
         val meta = _uiState.value.meta ?: return
 
+        // Both trailer paths off: skip, since the TMDB id lookup below runs regardless of the flags.
+        if (!AppFeaturePolicy.inAppTrailerPlaybackEnabled &&
+            !AppFeaturePolicy.externalTrailerPlaybackEnabled
+        ) {
+            return
+        }
+
         trailerFetchJob?.cancel()
         trailerFetchJob = viewModelScope.launch {
             _uiState.update { state ->

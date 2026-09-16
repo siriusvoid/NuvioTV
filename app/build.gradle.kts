@@ -149,6 +149,9 @@ android {
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
         // CI run number that ends the release tag; 0 for local builds.
         buildConfigField("int", "RELEASE_BUILD_NUMBER", (env("RELEASE_BUILD_NUMBER")?.toIntOrNull() ?: 0).toString())
+
+        // Read by the AppFeaturePolicy shared between playstore and nuvio.
+        buildConfigField("boolean", "FEATURE_IMDB_RATING_LOGO_ENABLED", "true")
     }
 
     flavorDimensions += "distribution"
@@ -171,6 +174,33 @@ android {
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IMDB_RATING_LOGO_ENABLED", "false")
+        }
+        // Plugin stubs, the real updater, no torrents or trailers; no applicationId override, so it installs over full.
+        create("nuvio") {
+            dimension = "distribution"
+            buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "false")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
+        }
+    }
+
+    sourceSets {
+        // Both updaters live outside the flavor dirs so nuvio gets the real one, not playstore's stub.
+        getByName("nuvio") {
+            java.srcDirs("src/playstore/java", "src/updater/java")
+        }
+        // libtorrserver.so (41MB) lives in a dir only the torrent flavors reference, so nuvio skips it.
+        getByName("full") {
+            jniLibs.srcDir("src/torrentlibs")
+            java.srcDir("src/updater/java")
+        }
+        getByName("playstore") {
+            jniLibs.srcDir("src/torrentlibs")
+            java.srcDir("src/updaterstub/java")
         }
     }
 
