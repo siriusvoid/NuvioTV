@@ -100,6 +100,8 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.ExperienceMode
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
+import com.nuvio.tv.domain.repository.WebDavGateway
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
 import com.nuvio.tv.ui.util.contentTextDirection
@@ -463,6 +465,10 @@ fun AddonManagerScreen(
                     )
                 }
             } else {
+                // Synthetic libraries are pinned first, so reordering starts below them.
+                val firstReorderableIndex = uiState.installedAddons.indexOfFirst {
+                    !it.isSyntheticLibrary()
+                }
                 itemsIndexed(
                     items = uiState.installedAddons,
                     key = { _, addon -> addon.baseUrl }
@@ -471,7 +477,7 @@ fun AddonManagerScreen(
                     AddonCard(
                         modifier = Modifier.bringIntoViewRequester(bringIntoViewRequester),
                         addon = addon,
-                        canMoveUp = index > 0,
+                        canMoveUp = index > firstReorderableIndex,
                         canMoveDown = index < uiState.installedAddons.lastIndex,
                         onMoveUp = {
                             viewModel.moveAddonUp(addon.baseUrl)
@@ -490,7 +496,7 @@ fun AddonManagerScreen(
                         onRemove = { addonUrlPendingDeletion = addon.baseUrl },
                         onEnabledChange = { enabled -> viewModel.setAddonEnabled(addon.baseUrl, enabled) },
                         isReadOnly = viewModel.isReadOnly,
-                        showReorder = !isEssential,
+                        showReorder = !isEssential && !addon.isSyntheticLibrary(),
                         toggleFocusRequester = if (index == 0) firstAddonToggleFocusRequester else null
                     )
                 }
@@ -1463,6 +1469,11 @@ private fun AddonCardContent(
         )
     }
 }
+
+/** Local and WebDAV libraries are always first and never reorderable. */
+private fun Addon.isSyntheticLibrary(): Boolean =
+    baseUrl.startsWith(LocalLibraryGateway.SYNTHETIC_BASE_URL) ||
+        baseUrl.startsWith(WebDavGateway.SYNTHETIC_BASE_URL)
 
 private fun CatalogDescriptor.isSearchOnlyCatalog(): Boolean {
     return extra.any { extra -> extra.name.equals("search", ignoreCase = true) && extra.isRequired }

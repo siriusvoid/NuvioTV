@@ -141,7 +141,8 @@ class AddonPreferences @Inject constructor(
             if (active != null && !active.isPrimary && active.usesPrimaryAddons) return false
         var changed = false
         store().edit { preferences ->
-            val orderedUrls = urls.map(::canonicalizeUrl)
+            // Deduplicate like addAddon: the addon manager keys its list by URL and crashes on a repeat.
+            val orderedUrls = urls.map(::canonicalizeUrl).distinctBy { it.lowercase() }
             val currentUrls = getCurrentList(preferences).map(::canonicalizeUrl)
             if (orderedUrls == currentUrls) return@edit
             preferences[orderedUrlsKey] = gson.toJson(orderedUrls)

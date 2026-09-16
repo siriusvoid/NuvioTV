@@ -28,6 +28,7 @@ import com.nuvio.tv.domain.model.enabledAddons
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.domain.repository.StreamRepository
+import com.nuvio.tv.domain.repository.WebDavGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -55,6 +56,7 @@ class StreamRepositoryImpl @Inject constructor(
     private val debridSettingsDataStore: DebridSettingsDataStore,
     private val tmdbService: TmdbService,
     private val localLibraryGateway: LocalLibraryGateway,
+    private val webDavGateway: WebDavGateway,
     private val debridStreamPresentation: DebridStreamPresentation,
     private val localDebridAvailabilityService: LocalDebridAvailabilityService
 ) : StreamRepository {
@@ -600,6 +602,9 @@ class StreamRepositoryImpl @Inject constructor(
         ) {
             return localLibraryGateway.streams(type, videoId, season = null, episode = null)
         }
+        if (webDavGateway.isWebDavAddon(addonId = addon.id, baseUrl = addon.baseUrl)) {
+            return webDavGateway.streams(type, videoId)
+        }
         val cleanBaseUrl = addon.baseUrl.trimEnd('/')
         val queryStart = cleanBaseUrl.indexOf('?')
         val basePath = if (queryStart >= 0) cleanBaseUrl.substring(0, queryStart).trimEnd('/') else cleanBaseUrl
@@ -645,6 +650,13 @@ class StreamRepositoryImpl @Inject constructor(
         type: String,
         videoId: String
     ): List<Stream> {
+        // Synthetic addons serve no meta and have no resolvable URL, so there's nothing to fall back to.
+        if (localLibraryGateway.isLocalLibrary(addonId = addon.id, baseUrl = addon.baseUrl) ||
+            webDavGateway.isWebDavAddon(addonId = addon.id, baseUrl = addon.baseUrl)
+        ) {
+            return emptyList()
+        }
+
         // For inline streams the meta is fetched using the content-level ID
         // (everything before the video-specific suffix).  For "other" type
         // the videoId IS the content ID; for series it is contentId:S:E.

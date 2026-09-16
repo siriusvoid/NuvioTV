@@ -13,6 +13,7 @@ import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.repository.AddonRepository
 import com.nuvio.tv.domain.repository.LocalLibraryGateway
+import com.nuvio.tv.domain.repository.WebDavGateway
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,7 @@ class AddonRepositoryImpl(
     private val addonSyncService: AddonSyncService,
     private val authManager: AuthManager,
     private val localLibraryGateway: LocalLibraryGateway,
+    private val webDavGateway: WebDavGateway,
     private val context: Context,
     /**
      * The dispatcher backing syncScope, the manifest cache disk IO and installedAddonsFlow.
@@ -70,6 +72,7 @@ class AddonRepositoryImpl(
         addonSyncService: AddonSyncService,
         authManager: AuthManager,
         localLibraryGateway: LocalLibraryGateway,
+        webDavGateway: WebDavGateway,
         @ApplicationContext context: Context
     ) : this(
         api = api,
@@ -77,6 +80,7 @@ class AddonRepositoryImpl(
         addonSyncService = addonSyncService,
         authManager = authManager,
         localLibraryGateway = localLibraryGateway,
+        webDavGateway = webDavGateway,
         context = context,
         dispatcher = Dispatchers.IO,
         clock = System::currentTimeMillis
@@ -111,6 +115,21 @@ class AddonRepositoryImpl(
     }
 
     private fun normalizeUrl(url: String): String = canonicalizeUrl(url).lowercase()
+
+    /** Local and WebDAV library rows are synthesised on every read and never stored; both URL spellings match. */
+    private val syntheticUrlPrefixes = listOf(
+        LocalLibraryGateway.SYNTHETIC_BASE_URL,
+        WebDavGateway.SYNTHETIC_BASE_URL
+    ).map { normalizeUrl(it) }
+
+    private fun isSyntheticUrl(url: String): Boolean {
+        val normalized = normalizeUrl(url)
+        return syntheticUrlPrefixes.any { normalized.startsWith(it) }
+    }
+
+    /** Drops synthetic URLs and repeats, the two ways the installed list gains a duplicate row. */
+    private fun installableUrls(urls: List<String>): List<String> =
+        urls.filterNot { isSyntheticUrl(it) }.distinctBy { normalizeUrl(it) }
 
     private fun triggerRemoteSync() {
         if (isSyncingFromRemote) {
@@ -235,7 +254,7 @@ class AddonRepositoryImpl(
             preferences.userSetNames,
             preferences.addonEnabledStates,
             manifestCacheRevision
-        ) { urls, names, enabledStates, _ -> Triple(urls, names, enabledStates) }
+        ) { urls, names, enabledStates, _ -> Triple(installableUrls(urls), names, enabledStates) }
         .flatMapLatest { (urls, userNames, enabledStates) ->
             flow {
                 if (urls.isEmpty()) {
@@ -299,14 +318,23 @@ class AddonRepositoryImpl(
         .stateIn(syncScope, SharingStarted.Eagerly, emptyList<Addon>())
 
     override fun getInstalledAddons(): Flow<List<Addon>> =
-        combine(installedAddonsFlow, localLibraryGateway.synthesizeAddon()) { addons, synthetic ->
-            if (synthetic != null) listOf(synthetic) + addons else addons
+        combine(
+            installedAddonsFlow,
+            localLibraryGateway.synthesizeAddon(),
+            webDavGateway.synthesizeAddon()
+        ) { addons, localLibrary, webDav ->
+            listOfNotNull(localLibrary, webDav) + addons
         }
 
     override suspend fun fetchAddon(baseUrl: String): NetworkResult<Addon> {
         if (localLibraryGateway.isLocalLibrary(addonId = null, baseUrl = baseUrl)) {
             val synthetic = localLibraryGateway.synthesizeAddon().first()
                 ?: return NetworkResult.Error(context.getString(R.string.local_library_error_no_sources))
+            return NetworkResult.Success(synthetic)
+        }
+        if (webDavGateway.isWebDavAddon(addonId = null, baseUrl = baseUrl)) {
+            val synthetic = webDavGateway.synthesizeAddon().first()
+                ?: return NetworkResult.Error(context.getString(R.string.webdav_error_no_sources))
             return NetworkResult.Success(synthetic)
         }
         val cleanBaseUrl = canonicalizeUrl(baseUrl)
@@ -332,6 +360,7 @@ class AddonRepositoryImpl(
     }
 
     override suspend fun addAddon(url: String) {
+        if (isSyntheticUrl(url)) return
         val cleanUrl = canonicalizeUrl(url)
         if (!preferences.addAddon(cleanUrl)) return
         triggerRemoteSync()
@@ -348,7 +377,8 @@ class AddonRepositoryImpl(
     }
 
     override suspend fun setAddonOrder(urls: List<String>) {
-        if (!preferences.setAddonOrder(urls)) return
+        // Synthetic rows are pinned and not installed, so they're dropped from the new order.
+        if (!preferences.setAddonOrder(installableUrls(urls))) return
         triggerRemoteSync()
     }
 
@@ -365,13 +395,12 @@ class AddonRepositoryImpl(
         remoteUrls: List<String>,
         removeMissingLocal: Boolean = true
     ) {
-        val normalizedRemote = remoteUrls
+        val normalizedRemote = installableUrls(remoteUrls)
             .map { canonicalizeUrl(it) }
             .filter { it.isNotBlank() }
-            .distinctBy { normalizeUrl(it) }
         val remoteSet = normalizedRemote.map { normalizeUrl(it) }.toSet()
 
-        val initialLocalUrls = preferences.installedAddonUrls.first()
+        val initialLocalUrls = installableUrls(preferences.installedAddonUrls.first())
         val initialLocalSet = initialLocalUrls.map { normalizeUrl(it) }.toSet()
         val shouldRemoveMissingLocal = if (removeMissingLocal && normalizedRemote.isEmpty() && initialLocalUrls.isNotEmpty()) {
             Log.w(
