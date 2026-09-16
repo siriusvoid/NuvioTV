@@ -147,6 +147,8 @@ android {
         // In-app updater (GitHub Releases)
         buildConfigField("String", "GITHUB_OWNER", "\"siriusvoid\"")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
+        // CI run number that ends the release tag; 0 for local builds.
+        buildConfigField("int", "RELEASE_BUILD_NUMBER", (env("RELEASE_BUILD_NUMBER")?.toIntOrNull() ?: 0).toString())
 
         // Read by the AppFeaturePolicy shared between playstore and nuvio.
         buildConfigField("boolean", "FEATURE_IMDB_RATING_LOGO_ENABLED", "true")

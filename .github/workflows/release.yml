@@ -11,10 +11,10 @@ name: Release (Nuvio APK)
 #
 # Every push to test/main cuts a release — there is no version gate. versionName /
 # versionCode still come from app/build.gradle.kts, but the release tag appends the
-# workflow run number (e.g. 0.7.13-beta-42) so each build is unique and compares as
-# strictly newer than the last for the in-app updater. You can also trigger manually
-# via workflow_dispatch. gh creates the per-release tag automatically, so no tag
-# pushing is needed.
+# workflow run number (e.g. 0.7.13-beta-42) so each build is unique. The APK carries
+# the same number as RELEASE_BUILD_NUMBER, which the in-app updater compares. You can
+# also trigger manually via workflow_dispatch. gh creates the per-release tag
+# automatically, so no tag pushing is needed.
 
 on:
   push:
@@ -100,6 +100,7 @@ jobs:
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
           SIMKL_CLIENT_ID: ${{ secrets.SIMKL_CLIENT_ID }}
           DEBUG_KEYSTORE_FILE: ${{ runner.temp }}/debug.keystore
+          RELEASE_BUILD_NUMBER: ${{ github.run_number }}
         run: ./gradlew assembleNuvioBenchmark
 
       - name: Create GitHub Release
