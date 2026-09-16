@@ -69,6 +69,8 @@ import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.ui.components.ImdbRatingSourceLabel
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.BlurTransformation
+import com.nuvio.tv.ui.util.backdropDecodeHeight
+import com.nuvio.tv.ui.util.backdropDecodeWidth
 import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import kotlinx.coroutines.launch
@@ -537,7 +539,8 @@ internal fun episodeOverlayBackdropDecodeSize(
 ): Pair<Int, Int> {
     val width = screenWidthPx.coerceAtLeast(1)
     val height = screenHeightPx.coerceAtLeast(1)
-    if (!blur) return width to height
+    // Served at w1280, so decode no larger; the prefetch key derives from this too.
+    if (!blur) return backdropDecodeWidth(width) to backdropDecodeHeight(height)
     val blurredWidth = (width / 4).coerceIn(1, OVERLAY_BLUR_MAX_WIDTH_PX)
     val blurredHeight = ((height.toLong() * blurredWidth) / width).toInt().coerceAtLeast(1)
     return blurredWidth to blurredHeight

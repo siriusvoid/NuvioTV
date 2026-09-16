@@ -44,6 +44,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -83,6 +86,37 @@ import java.util.Locale
 
 private const val MAX_VISIBLE_HERO_GENRES = 6
 
+// Three beats 60ms apart across the 300ms entrance, 180ms each, so the last lands as it ends.
+private const val HERO_ENTRANCE_SPAN = 0.6f
+private const val HERO_LOGO_START = 0f
+private const val HERO_ACTIONS_START = 0.2f
+private const val HERO_SYNOPSIS_START = 0.4f
+
+// Lower elements travel further, so the hero settles up from below rather than sliding on one rail.
+private val HERO_LOGO_RISE = 12.dp
+private val HERO_ACTIONS_RISE = 18.dp
+private val HERO_SYNOPSIS_RISE = 24.dp
+
+/** How much of an element's slice the fade takes; the rise keeps going after it lands. */
+private const val HERO_ENTRANCE_FADE_PORTION = 0.6f
+
+/** Fades and lifts one element over its slice of the entrance; progress is read in the draw phase. */
+private fun Modifier.heroEntrance(
+    progress: () -> Float,
+    start: Float,
+    risePx: Float
+): Modifier = graphicsLayer {
+    val raw = ((progress() - start) / HERO_ENTRANCE_SPAN).coerceIn(0f, 1f)
+    // Opacity resolves early so text is readable while it settles; the rise runs on its own curve.
+    val fade = NuvioMotion.tokens.easings.standard
+        .transform((raw / HERO_ENTRANCE_FADE_PORTION).coerceIn(0f, 1f))
+    val rise = NuvioMotion.tokens.easings.emphasized.transform(raw)
+    // ModulateAlpha: group alpha would composite offscreen and clip button caps outside the column.
+    compositingStrategy = CompositingStrategy.ModulateAlpha
+    alpha = fade
+    translationY = risePx * (1f - rise)
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HeroContentSection(
@@ -115,7 +149,9 @@ fun HeroContentSection(
     restorePlayFocusToken: Int = 0,
     onHeroActionFocused: () -> Unit = {},
     onPlayFocusRestored: () -> Unit = {},
-    onShowFullDescription: () -> Unit = {}
+    onShowFullDescription: () -> Unit = {},
+    /** Hoisted above the lazy list so scrolling the hero out of view cannot replay it. */
+    heroEntranceProgress: () -> Float = { 1f }
 ) {
     val context = LocalContext.current
     val logoModel = remember(context, meta.logo) {
@@ -148,6 +184,11 @@ fun HeroContentSection(
         animationSpec = tween(600),
         label = "logoHeight"
     )
+    val entranceDensity = LocalDensity.current
+    val logoRisePx = with(entranceDensity) { HERO_LOGO_RISE.toPx() }
+    val actionsRisePx = with(entranceDensity) { HERO_ACTIONS_RISE.toPx() }
+    val synopsisRisePx = with(entranceDensity) { HERO_SYNOPSIS_RISE.toPx() }
+
     val logoBottomPadding by animateDpAsState(
         targetValue = if (isTrailerPlaying) NuvioTheme.spacing.xl else NuvioTheme.spacing.lg,
         animationSpec = tween(600),
@@ -183,6 +224,7 @@ fun HeroContentSection(
                     modifier = Modifier
                         .height(logoHeight)
                         .fillMaxWidth(logoMaxWidth)
+                        .heroEntrance(heroEntranceProgress, HERO_LOGO_START, logoRisePx)
                         .padding(bottom = logoBottomPadding),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.CenterStart
@@ -198,7 +240,9 @@ fun HeroContentSection(
                         text = meta.name,
                         style = MaterialTheme.typography.displayMedium,
                         color = NuvioTheme.colors.TextPrimary,
-                        modifier = Modifier.padding(bottom = NuvioTheme.spacing.sm)
+                        modifier = Modifier
+                            .heroEntrance(heroEntranceProgress, HERO_LOGO_START, logoRisePx)
+                            .padding(bottom = NuvioTheme.spacing.sm)
                     )
                 }
             }
@@ -225,6 +269,11 @@ fun HeroContentSection(
             ) {
                 Column {
                     Row(
+                        modifier = Modifier.heroEntrance(
+                            heroEntranceProgress,
+                            HERO_ACTIONS_START,
+                            actionsRisePx
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -292,39 +341,51 @@ fun HeroContentSection(
 
                     Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
 
-                    if (mdbListRatings?.isEmpty() == false) {
-                        MDBListRatingsRow(ratings = mdbListRatings)
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
+                    // The text block is one beat; a beat each would stretch the cascade past half a second.
+                    Column(
+                        modifier = Modifier.heroEntrance(
+                            heroEntranceProgress,
+                            HERO_SYNOPSIS_START,
+                            synopsisRisePx
+                        )
+                    ) {
+                        if (mdbListRatings?.isEmpty() == false) {
+                            MDBListRatingsRow(ratings = mdbListRatings)
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
-                    meta.description?.let { description ->
-                        SynopsisDescription(
-                            description = description,
-                            onShowFullDescription = onShowFullDescription,
-                            upFocusRequester = playButtonFocusRequester,
-                            onDownPressed = onSkipDownToEpisodes,
-                            onTruncationChanged = { descriptionTakesFocus = it },
-                            onFocused = onHeroActionFocused,
-                            modifier = Modifier
-                                .fillMaxWidth(0.6f)
-                                .padding(bottom = NuvioTheme.spacing.md)
+                        meta.description?.let { description ->
+                            SynopsisDescription(
+                                description = description,
+                                onShowFullDescription = onShowFullDescription,
+                                upFocusRequester = playButtonFocusRequester,
+                                onDownPressed = onSkipDownToEpisodes,
+                                onTruncationChanged = { descriptionTakesFocus = it },
+                                onFocused = onHeroActionFocused,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.6f)
+                                    .padding(bottom = NuvioTheme.spacing.md)
+                            )
+                        }
+
+                        MetaInfoRow(
+                            meta = meta,
+                            hideImdbRating = hideMetaInfoImdb,
+                            showFullReleaseDate = showFullReleaseDate,
+                            tmdbRating = tmdbRating,
+                            hideParentalRating = hideParentalRating,
+                            hideGenres = hideGenres,
+                            hideExtraMetadata = hideExtraMetadata
                         )
                     }
-
-                    MetaInfoRow(
-                        meta = meta,
-                        hideImdbRating = hideMetaInfoImdb,
-                        showFullReleaseDate = showFullReleaseDate,
-                        tmdbRating = tmdbRating,
-                        hideParentalRating = hideParentalRating,
-                        hideGenres = hideGenres,
-                        hideExtraMetadata = hideExtraMetadata
-                    )
                 }
             }
         }
     }
 }
+
+/** The default 1.1 nearly closes the 12dp gap beside the play button; every action button uses this. */
+private const val HERO_ACTION_FOCUSED_SCALE = 1.05f
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -411,6 +472,7 @@ private fun PlayButton(
             contentColor = androidx.compose.ui.graphics.Color.Black,
             focusedContentColor = androidx.compose.ui.graphics.Color.Black
         ),
+        scale = ButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         shape = ButtonDefaults.shape(
             shape = RoundedCornerShape(NuvioTheme.spacing.xxl)
         ),
@@ -469,6 +531,7 @@ private fun ActionIconButtonPainter(
                 if (state.isFocused) onFocused()
             }
             .focusProperties { up = FocusRequester.Cancel },
+        scale = IconButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         colors = IconButtonDefaults.colors(
             containerColor = NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,
@@ -554,6 +617,7 @@ private fun ActionIconButton(
                 false
             }
             .focusProperties { up = FocusRequester.Cancel },
+        scale = IconButtonDefaults.scale(focusedScale = HERO_ACTION_FOCUSED_SCALE),
         colors = IconButtonDefaults.colors(
             containerColor = if (selected) selectedContainerColor else NuvioTheme.colors.BackgroundCard,
             focusedContainerColor = NuvioTheme.colors.Secondary,

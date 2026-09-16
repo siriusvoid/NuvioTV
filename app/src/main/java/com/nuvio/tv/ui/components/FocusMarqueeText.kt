@@ -33,7 +33,8 @@ private fun String.isRtl(): Boolean {
 
 /**
  * Single-line text that scrolls (marquees) horizontally while [focused] if the content overflows,
- * and otherwise ellipsizes.
+ * and otherwise ellipsizes. [layerFree] drops TV Material's offscreen text layer; only for a
+ * container that never scales.
  *
  */
 @Composable
@@ -44,6 +45,7 @@ fun FocusMarqueeText(
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
     textAlign: TextAlign? = null,
+    layerFree: Boolean = false,
 ) {
     val currentDirection = LocalLayoutDirection.current
     val textDirection = remember(text) {
@@ -59,16 +61,29 @@ fun FocusMarqueeText(
     val textOverflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis
 
     val content = @Composable {
-        Text(
-            text = text,
-            modifier = textModifier,
-            style = style,
-            color = color,
-            maxLines = 1,
-            softWrap = false,
-            overflow = textOverflow,
-            textAlign = textAlign,
-        )
+        if (layerFree) {
+            LayerFreeText(
+                text = text,
+                modifier = textModifier,
+                style = style,
+                color = color,
+                maxLines = 1,
+                softWrap = false,
+                overflow = textOverflow,
+                textAlign = textAlign,
+            )
+        } else {
+            Text(
+                text = text,
+                modifier = textModifier,
+                style = style,
+                color = color,
+                maxLines = 1,
+                softWrap = false,
+                overflow = textOverflow,
+                textAlign = textAlign,
+            )
+        }
     }
 
     if (needsDirectionOverride) {
