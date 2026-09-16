@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -58,6 +59,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.domain.model.MetaCastMember
 import com.nuvio.tv.ui.components.LayerFreeText
+import kotlinx.coroutines.flow.StateFlow
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -67,6 +69,8 @@ fun CastSection(
     title: String = "Cast",
     leadingCast: List<MetaCastMember> = emptyList(),
     hideActorNames: Boolean = false,
+    castPhotoOverrides: StateFlow<Map<String, Boolean>?>? = null,
+    onCastPhotoHiddenToggled: (url: String, hidden: Boolean) -> Unit = { _, _ -> },
     upFocusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     sectionFocusRequester: FocusRequester? = null,
@@ -77,6 +81,9 @@ fun CastSection(
     onCastMemberClick: (MetaCastMember) -> Unit = {}
 ) {
     if (cast.isEmpty() && leadingCast.isEmpty()) return
+
+    // Only read while hiding is on; null means the stored choices haven't loaded yet.
+    val photoOverrides = if (hideActorNames) castPhotoOverrides?.collectAsState()?.value else emptyMap()
 
     val firstItemFocusRequester = remember { FocusRequester() }
     val restoreFocusRequester = remember { FocusRequester() }
@@ -194,6 +201,8 @@ fun CastSection(
                         CastMemberItem(
                             member = member,
                             hideActorName = hideActorNames,
+                            castPhotoOverrides = photoOverrides,
+                            onPhotoHiddenToggled = onCastPhotoHiddenToggled,
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .then(itemFocusPropertiesModifier),
@@ -249,6 +258,8 @@ fun CastSection(
                     CastMemberItem(
                         member = member,
                         hideActorName = hideActorNames,
+                        castPhotoOverrides = photoOverrides,
+                        onPhotoHiddenToggled = onCastPhotoHiddenToggled,
                         modifier = Modifier
                             .focusRequester(focusRequester)
                             .then(itemFocusPropertiesModifier),
@@ -275,6 +286,8 @@ fun CastSection(
 private fun CastMemberItem(
     member: MetaCastMember,
     hideActorName: Boolean = false,
+    castPhotoOverrides: Map<String, Boolean>? = emptyMap(),
+    onPhotoHiddenToggled: (url: String, hidden: Boolean) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     itemWidth: Dp = 150.dp,
     cardSize: Dp = 100.dp,
@@ -290,15 +303,12 @@ private fun CastMemberItem(
     val nameStyle = remember(typography) { typography.labelMedium }
     val characterStyle = remember(typography) { typography.labelSmall }
     val initialsStyle = remember(typography) { typography.titleLarge }
-    // Actor/voice-actor headshots are real-person photos: TMDB profile images
-    // (image.tmdb.org) or TVDB person artwork (.../banners/person/...). Character
-    // images come from elsewhere — TVDB role art (.../v4/actor/.../photo/) or anime
-    // CDNs. When hiding actor names, blank only the real-person headshots.
-    val isRealPersonPhoto = member.photo?.let { url ->
-        url.contains("image.tmdb.org", ignoreCase = true) ||
-            url.contains("/person/", ignoreCase = true)
-    } == true
-    val photo = if (hideActorName && isRealPersonPhoto) null else member.photo
+    val sourcePhoto = member.photo?.takeIf { it.isNotBlank() }
+    val likelyActorPhoto = remember(sourcePhoto) { sourcePhoto != null && isLikelyActorPhoto(sourcePhoto) }
+    // Before the choices load, the guess decides.
+    val photoHidden = hideActorName && sourcePhoto != null &&
+        (castPhotoOverrides?.get(sourcePhoto) ?: likelyActorPhoto)
+    val photo = if (photoHidden) null else sourcePhoto
     val photoModel = remember(context, photo, cardSizePx) {
         photo?.takeIf { it.isNotBlank() }?.let { url ->
             ImageRequest.Builder(context)
@@ -318,6 +328,11 @@ private fun CastMemberItem(
     ) {
         Card(
             onClick = onClick,
+            onLongClick = if (hideActorName && sourcePhoto != null && castPhotoOverrides != null) {
+                { onPhotoHiddenToggled(sourcePhoto, !photoHidden) }
+            } else {
+                null
+            },
             modifier = modifier
                 .size(cardSize)
                 .align(Alignment.Start)
@@ -419,4 +434,15 @@ private fun CastMemberItem(
             )
         }
     }
+}
+
+// TVDB character art lived under /banners/person/ until 2021; later uploads are actor photos, dated by name.
+private val tvdbPersonUpload = Regex("""/banners/person/\d+/([0-9a-f]{8})[0-9a-f]{5}\.""", RegexOption.IGNORE_CASE)
+private const val TVDB_ROLE_ART_CUTOFF_SECONDS = 1_622_505_600L // 2021-06-01
+
+private fun isLikelyActorPhoto(url: String): Boolean {
+    if (url.contains("image.tmdb.org", ignoreCase = true)) return true
+    if (url.contains("/banners/person/", ignoreCase = true) && url.substringAfterLast('/').startsWith("primary.")) return true
+    val uploadedAt = tvdbPersonUpload.find(url)?.groupValues?.get(1)?.toLongOrNull(16) ?: return false
+    return uploadedAt >= TVDB_ROLE_ART_CUTOFF_SECONDS
 }

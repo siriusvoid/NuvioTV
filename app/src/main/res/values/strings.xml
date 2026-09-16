@@ -1074,7 +1074,7 @@
     <string name="layout_hide_extra_metadata">Hide extra metadata</string>
     <string name="layout_hide_extra_metadata_sub">Hide year, country, runtime, language and status on the detail page.</string>
     <string name="layout_hide_actor_names">Hide actor names &amp; photos</string>
-    <string name="layout_hide_actor_names_sub">Hide cast actor/actress names and their photos. Character names and character art stay visible where possible.</string>
+    <string name="layout_hide_actor_names_sub">Hide actor names and photos in the cast row; long-press a picture to hide or show it.</string>
     <string name="layout_section_focused">Focused Poster</string>
     <string name="layout_section_focused_desc">Advanced behavior for focused poster cards.</string>
     <string name="layout_expand_poster">Expand Focused Poster to Backdrop</string>

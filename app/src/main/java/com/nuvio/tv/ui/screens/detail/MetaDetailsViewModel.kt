@@ -13,6 +13,7 @@ import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbMovieCollection
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.CachedMetaDetails
+import com.nuvio.tv.data.local.CastPhotoChoicesDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.local.MDBListSettingsDataStore
 import com.nuvio.tv.data.local.MetaDetailsDiskCache
@@ -101,6 +102,7 @@ class MetaDetailsViewModel @Inject constructor(
     private val traktRelatedService: TraktRelatedService,
     private val traktSettingsDataStore: TraktSettingsDataStore,
     private val layoutPreferenceDataStore: LayoutPreferenceDataStore,
+    private val castPhotoChoicesDataStore: CastPhotoChoicesDataStore,
     private val playerSettingsDataStore: PlayerSettingsDataStore,
     private val profileManager: ProfileManager,
     private val metaDetailsSessionState: MetaDetailsSessionState,
@@ -373,6 +375,9 @@ class MetaDetailsViewModel @Inject constructor(
             is MetaDetailsEvent.OnMarkPreviousEpisodesWatched -> markPreviousEpisodesWatched(event.video)
             is MetaDetailsEvent.OnMarkPreviousSeasonsWatched -> markPreviousSeasonsWatched(event.season)
             MetaDetailsEvent.OnLibraryLongPress -> openListPicker()
+            is MetaDetailsEvent.OnCastPhotoHiddenToggled -> viewModelScope.launch {
+                castPhotoChoicesDataStore.setHidden(event.url, event.hidden)
+            }
             is MetaDetailsEvent.OnPickerMembershipToggled -> togglePickerMembership(event.listKey)
             MetaDetailsEvent.OnPickerSave -> savePickerMembership()
             MetaDetailsEvent.OnPickerDismiss -> dismissListPicker()
@@ -755,6 +760,8 @@ class MetaDetailsViewModel @Inject constructor(
             }
         }
     }
+
+    val castPhotoOverrides: StateFlow<Map<String, Boolean>?> get() = castPhotoChoicesDataStore.overrides
 
     private fun observeHideActorNames() {
         viewModelScope.launch {
