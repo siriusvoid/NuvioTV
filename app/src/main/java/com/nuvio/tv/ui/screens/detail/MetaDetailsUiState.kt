@@ -124,6 +124,7 @@ sealed class MetaDetailsEvent {
     data class OnMarkPreviousEpisodesWatched(val video: Video) : MetaDetailsEvent()
     data class OnMarkPreviousSeasonsWatched(val season: Int) : MetaDetailsEvent()
     data object OnLibraryLongPress : MetaDetailsEvent()
+    data class OnCastPhotoHiddenToggled(val url: String, val hidden: Boolean) : MetaDetailsEvent()
     data class OnPickerMembershipToggled(val listKey: String) : MetaDetailsEvent()
     data object OnPickerSave : MetaDetailsEvent()
     data object OnPickerDismiss : MetaDetailsEvent()

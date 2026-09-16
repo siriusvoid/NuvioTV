@@ -134,8 +134,11 @@ import com.nuvio.tv.ui.components.TrailerPlayer
 import com.nuvio.tv.ui.components.posteroptions.TrackingRemovalConfirmationDialog
 import com.nuvio.tv.core.tracking.LOCAL_LIBRARY_LIST_KEY
 import com.nuvio.tv.core.tracking.supportsMembershipFor
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.rememberCoroutineScope
 
 private enum class RestoreTarget {
@@ -222,6 +225,9 @@ private const val HERO_ENTRANCE_DURATION_MS = 300
 
 /** Starts at 70% of the screen crossfade, when it's ~94% opaque, instead of playing behind it. */
 private val HERO_ENTRANCE_DELAY_MS = (NuvioMotion.tokens.durations.medium * 0.7f).toLong()
+
+/** Longest the row warm-up waits for the cast picture choices on their first read. */
+private const val CAST_PHOTO_CHOICES_WAIT_MS = 150L
 
 /** Items after the visible ones to build ahead: season tabs, episodes, people tabs and cast. */
 private const val DETAIL_ROWS_WARMUP_COUNT = 4
@@ -731,6 +737,10 @@ fun MetaDetailsScreen(
                     skipSeasonsGoingDown = uiState.skipSeasonsGoingDown,
                     hideExtraMetadata = uiState.hideExtraMetadata,
                     hideActorNames = uiState.hideActorNames,
+                    castPhotoOverrides = viewModel.castPhotoOverrides,
+                    onCastPhotoHiddenToggled = { url, hidden ->
+                        viewModel.onEvent(MetaDetailsEvent.OnCastPhotoHiddenToggled(url, hidden))
+                    },
                     isMovieWatched = uiState.isMovieWatched,
                     isMovieWatchedPending = uiState.isMovieWatchedPending,
                     moreLikeThis = uiState.moreLikeThis,
@@ -1056,6 +1066,8 @@ private fun MetaDetailsContent(
     skipSeasonsGoingDown: Boolean,
     hideExtraMetadata: Boolean,
     hideActorNames: Boolean,
+    castPhotoOverrides: StateFlow<Map<String, Boolean>?>,
+    onCastPhotoHiddenToggled: (url: String, hidden: Boolean) -> Unit,
     isMovieWatched: Boolean,
     isMovieWatchedPending: Boolean,
     moreLikeThis: List<MetaPreview>,
@@ -1959,6 +1971,7 @@ private fun MetaDetailsContent(
     val heroEntrance = remember(meta.id) { Animatable(0f) }
     var predrawEpisodeCards by remember(meta.id) { mutableStateOf(false) }
     val canPredrawEpisodeCards by rememberUpdatedState(showEpisodesRow && episodesForSeason.isNotEmpty())
+    val currentHideActorNames by rememberUpdatedState(hideActorNames)
     LaunchedEffect(meta.id) {
         heroEntrance.snapTo(0f)
         val remainingDelayMs = HERO_ENTRANCE_DELAY_MS - (SystemClock.uptimeMillis() - screenEnteredAtMs)
@@ -1970,6 +1983,10 @@ private fun MetaDetailsContent(
                 easing = LinearEasing
             )
         )
+        // Load the cast picture choices now, so the cast row below is built with them.
+        if (currentHideActorNames && castPhotoOverrides.value == null) {
+            withTimeoutOrNull(CAST_PHOTO_CHOICES_WAIT_MS) { castPhotoOverrides.first { it != null } }
+        }
         // The page is at rest now, so building rows costs it no frames.
         rowsPrefetchStrategy.warmUp(listState.layoutInfo, DETAIL_ROWS_WARMUP_COUNT)
         // A card's first draw is several times its later ones; doing it now keeps it out of the jump.
@@ -2224,6 +2241,8 @@ private fun MetaDetailsContent(
                                     cast = normalCastMembers,
                                     title = if (hasVisiblePeopleTabs) "" else strTabCast,
                                     hideActorNames = hideActorNames,
+                                    castPhotoOverrides = castPhotoOverrides,
+                                    onCastPhotoHiddenToggled = onCastPhotoHiddenToggled,
                                     upFocusRequester = if (hasVisiblePeopleTabs) castTabFocusRequester else seasonDownFocusRequester ?: heroPlayFocusRequester,
                                     downFocusRequester = if (shouldShowCommentsSection && canToggleEpisodeComments) commentsSelectedModeFocusRequester else null,
                                     sectionFocusRequester = castSectionFocusRequester,
