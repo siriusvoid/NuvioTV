@@ -59,6 +59,13 @@ internal object PlayerSubtitleUtils {
             return "es"
         }
 
+        if (containsAny("bahasa indonesia", "indonesian", "indonesia")) {
+            return "id"
+        }
+        if (containsAny("bahasa malaysia", "bahasa melayu", "malaysian")) {
+            return "ms"
+        }
+
         resolveLanguageNameAlias(tokenized)?.let { return it }
 
         // LANGUAGE_OVERRIDES uses pt-BR (mixed case) — normalize to lowercase for consistency
@@ -139,6 +146,12 @@ internal object PlayerSubtitleUtils {
             return baseLang
         }
 
+        if (baseLang == "ms" || baseLang == "msa" || baseLang == "may") {
+            val hasIndonesian = INDONESIAN_TAGS.any { haystack.contains(it) }
+            if (hasIndonesian) return "id"
+            return baseLang
+        }
+
         return baseLang
     }
 
@@ -154,6 +167,9 @@ internal object PlayerSubtitleUtils {
     )
     internal val CASTILIAN_TAGS = listOf(
         "es-es", "es_es", "castilian", "castellano", "spain", "españa", "espana", "iberian"
+    )
+    internal val INDONESIAN_TAGS = listOf(
+        "indonesia", "indonesian", "bahasa indonesia"
     )
 
     fun mimeTypeFromUrl(url: String): String {

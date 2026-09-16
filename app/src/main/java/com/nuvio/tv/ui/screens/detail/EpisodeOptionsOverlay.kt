@@ -71,6 +71,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.util.BlurTransformation
 import com.nuvio.tv.ui.util.backdropDecodeHeight
 import com.nuvio.tv.ui.util.backdropDecodeWidth
+import com.nuvio.tv.ui.util.contentTextDirection
 import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -95,6 +96,7 @@ internal fun EpisodeOptionsOverlay(
     hasProgress: Boolean = false,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
+    isPlayEnabled: Boolean = true,
     onStartFromBeginning: () -> Unit = {},
     onOpenEpisodeComments: () -> Unit = {},
     showOpenEpisodeComments: Boolean = false,
@@ -212,7 +214,8 @@ internal fun EpisodeOptionsOverlay(
         }
         add(
             EpisodeOverlayAction(
-                label = stringResource(R.string.episodes_play),
+                label = stringResource(if (isPlayEnabled) R.string.episodes_play else R.string.playback_unavailable),
+                enabled = isPlayEnabled,
                 onClick = onPlay
             )
         )
@@ -224,7 +227,7 @@ internal fun EpisodeOptionsOverlay(
                 )
             )
         }
-        if (showPlayManually) {
+        if (showPlayManually && isPlayEnabled) {
             add(
                 EpisodeOverlayAction(
                     label = stringResource(R.string.play_manually),
@@ -232,7 +235,7 @@ internal fun EpisodeOptionsOverlay(
                 )
             )
         }
-        if (hasProgress) {
+        if (hasProgress && isPlayEnabled) {
             add(
                 EpisodeOverlayAction(
                     label = stringResource(R.string.cw_action_start_from_beginning),
@@ -416,11 +419,11 @@ internal fun EpisodeOptionsOverlay(
                     if (description.isNotBlank()) {
                         Text(
                             text = description,
-                            style = if (isNoneStyle) {
+                            style = (if (isNoneStyle) {
                                 MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Normal)
                             } else {
                                 descriptionStyle
-                            },
+                            }).copy(textDirection = description.contentTextDirection()),
                             color = Color.White.copy(alpha = 0.72f),
                             maxLines = if (isNoneStyle) 8 else Int.MAX_VALUE,
                             overflow = TextOverflow.Ellipsis

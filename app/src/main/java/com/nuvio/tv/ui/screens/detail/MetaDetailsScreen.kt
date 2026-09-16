@@ -1,5 +1,8 @@
 package com.nuvio.tv.ui.screens.detail
 
+import com.nuvio.tv.ui.components.LocalPlaybackAvailability
+import android.widget.Toast
+
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.NuvioMotion
 
@@ -54,6 +57,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
@@ -325,6 +329,7 @@ fun MetaDetailsScreen(
         contentLanguage: String?
     ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> }
 ) {
+    val playbackAvailability = LocalPlaybackAvailability.current
     // Navigation entry, not meta arrival: a title shown via the skeleton is already past the crossfade.
     val screenEnteredAtMs = remember { SystemClock.uptimeMillis() }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -554,7 +559,11 @@ fun MetaDetailsScreen(
                 val yearString = remember(meta.releaseInfo) {
                     formatDetailYearRange(meta.releaseInfo)
                 }
-                val playEpisode: (Video) -> Unit = { video ->
+                val playEpisode: (Video) -> Unit = playEpisode@{ video ->
+                    if (!playbackAvailability.canStream(meta.apiType, video.id, meta.id, video)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@playEpisode
+                    }
                     onPlayClick(
                         video.id,
                         meta.apiType,
@@ -572,7 +581,11 @@ fun MetaDetailsScreen(
                         meta.resolveContentLanguage()
                     )
                 }
-                val playEpisodeManually: (Video) -> Unit = { video ->
+                val playEpisodeManually: (Video) -> Unit = playEpisodeManually@{ video ->
+                    if (!playbackAvailability.canStream(meta.apiType, video.id, meta.id, video)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@playEpisodeManually
+                    }
                     onPlayManuallyClick(
                         video.id,
                         meta.apiType,
@@ -590,7 +603,11 @@ fun MetaDetailsScreen(
                         meta.resolveContentLanguage()
                     )
                 }
-                val playTitle: (String) -> Unit = { videoId ->
+                val playTitle: (String) -> Unit = playTitle@{ videoId ->
+                    if (!playbackAvailability.canStream(meta.apiType, videoId, meta.id)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@playTitle
+                    }
                     onPlayClick(
                         videoId,
                         meta.apiType,
@@ -608,7 +625,11 @@ fun MetaDetailsScreen(
                         meta.resolveContentLanguage()
                     )
                 }
-                val playTitleManually: (String) -> Unit = { videoId ->
+                val playTitleManually: (String) -> Unit = playTitleManually@{ videoId ->
+                    if (!playbackAvailability.canStream(meta.apiType, videoId, meta.id)) {
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@playTitleManually
+                    }
                     onPlayManuallyClick(
                         videoId,
                         meta.apiType,
@@ -643,12 +664,19 @@ fun MetaDetailsScreen(
                     playOnLoadConsumed.value,
                     isSeries,
                     uiState.nextToWatch,
-                    playOnLoadVideo?.id
+                    playOnLoadVideo?.id,
+                    playbackAvailability
                 ) {
                     if (!playOnLoad || playOnLoadConsumed.value || (isSeries && uiState.nextToWatch == null)) {
                         return@LaunchedEffect
                     }
+                    if (!playbackAvailability.isLoaded) return@LaunchedEffect
                     playOnLoadConsumed.value = true
+                    if (!playbackAvailability.canStream(meta.apiType, playOnLoadVideo?.id ?: meta.id, meta.id, playOnLoadVideo)) {
+                        playOnLoadReturnObserved.value = true
+                        Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                        return@LaunchedEffect
+                    }
                     playOnLoadHandoffDispatched.value = true
                     if (playOnLoadVideo != null) {
                         if (playOnLoadManually) {
@@ -732,7 +760,11 @@ fun MetaDetailsScreen(
                     onEpisodeManualPlayClick = playEpisodeManually,
                     onPlayClick = playTitle,
                     onPlayManuallyClick = playTitleManually,
-                    onEpisodeStartFromBeginningClick = { video ->
+                    onEpisodeStartFromBeginningClick = onEpisodeStartFromBeginningClick@{ video ->
+                        if (!playbackAvailability.canStream(meta.apiType, video.id, meta.id, video)) {
+                            Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                            return@onEpisodeStartFromBeginningClick
+                        }
                         onPlayStartFromBeginningClick(
                             video.id,
                             meta.apiType,
@@ -750,7 +782,11 @@ fun MetaDetailsScreen(
                             meta.resolveContentLanguage()
                         )
                     },
-                    onPlayStartFromBeginningClick = { videoId ->
+                    onPlayStartFromBeginningClick = onPlayStartFromBeginningClick@{ videoId ->
+                        if (!playbackAvailability.canStream(meta.apiType, videoId, meta.id)) {
+                            Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
+                            return@onPlayStartFromBeginningClick
+                        }
                         onPlayStartFromBeginningClick(
                             videoId,
                             meta.apiType,
@@ -1101,6 +1137,7 @@ private fun MetaDetailsContent(
     onNavigateToDetail: (itemId: String, itemType: String, addonBaseUrl: String?) -> Unit = { _, _, _ -> },
     onPosterLongPress: (MetaPreview) -> Unit = {}
 ) {
+    val playbackAvailability = LocalPlaybackAvailability.current
     val canLoadMoreComments = commentsCurrentPage in 1 until commentsPageCount
     val selectedCommentIndex = remember(comments, selectedComment?.id) {
         selectedComment?.let { review -> comments.indexOfFirst { it.id == review.id } } ?: -1
@@ -1119,6 +1156,10 @@ private fun MetaDetailsContent(
             nextToWatch = nextToWatch,
             episodesForSeason = episodesForSeason
         )
+    }
+    val isPlayEnabled = playbackAvailability.canStream(meta.apiType, heroVideo?.id ?: meta.id, meta.id, heroVideo)
+    val canPlayEpisode = remember(playbackAvailability, meta.apiType, meta.id) {
+        { video: Video -> playbackAvailability.canStream(meta.apiType, video.id, meta.id, video) }
     }
     val rowsPrefetchStrategy = remember { DetailRowsPrefetchStrategy() }
     val listState = rememberLazyListState(prefetchStrategy = rowsPrefetchStrategy)
@@ -1705,9 +1746,9 @@ private fun MetaDetailsContent(
     // Pre-compute gradient brushes once
 
     // Stable hero play callback
-    val heroPlayClick = remember(heroVideo, meta.id, onEpisodeClick, onPlayClick) {
+    val heroPlayClick = remember(heroVideo, meta.id, onEpisodeClick, onPlayClick, isPlayEnabled) {
         {
-            markHeroRestore()
+            if (isPlayEnabled) markHeroRestore()
             if (heroVideo != null) {
                 onEpisodeClick(heroVideo)
             } else {
@@ -1715,9 +1756,9 @@ private fun MetaDetailsContent(
             }
         }
     }
-    val heroPlayManualClick = remember(heroVideo, meta.id, onEpisodeManualPlayClick, onPlayManuallyClick) {
+    val heroPlayManualClick = remember(heroVideo, meta.id, onEpisodeManualPlayClick, onPlayManuallyClick, isPlayEnabled) {
         {
-            markHeroRestore()
+            if (isPlayEnabled) markHeroRestore()
             if (heroVideo != null) {
                 onEpisodeManualPlayClick(heroVideo)
             } else {
@@ -1725,9 +1766,9 @@ private fun MetaDetailsContent(
             }
         }
     }
-    val heroPlayStartFromBeginningClick = remember(heroVideo, meta.id, onEpisodeStartFromBeginningClick, onPlayStartFromBeginningClick) {
+    val heroPlayStartFromBeginningClick = remember(heroVideo, meta.id, onEpisodeStartFromBeginningClick, onPlayStartFromBeginningClick, isPlayEnabled) {
         {
-            markHeroRestore()
+            if (isPlayEnabled) markHeroRestore()
             if (heroVideo != null) {
                 onEpisodeStartFromBeginningClick(heroVideo)
             } else {
@@ -1735,15 +1776,15 @@ private fun MetaDetailsContent(
             }
         }
     }
-    val episodeClick = remember(onEpisodeClick) {
+    val episodeClick = remember(onEpisodeClick, canPlayEpisode) {
         { video: Video ->
-            markEpisodeRestore(video.id)
+            if (canPlayEpisode(video)) markEpisodeRestore(video.id)
             onEpisodeClick(video)
         }
     }
-    val episodeManualClick = remember(onEpisodeManualPlayClick) {
+    val episodeManualClick = remember(onEpisodeManualPlayClick, canPlayEpisode) {
         { video: Video ->
-            markEpisodeRestore(video.id)
+            if (canPlayEpisode(video)) markEpisodeRestore(video.id)
             onEpisodeManualPlayClick(video)
         }
     }
@@ -2005,7 +2046,8 @@ private fun MetaDetailsContent(
                         nextEpisode = nextEpisode,
                         nextToWatch = nextToWatch,
                         onPlayClick = heroPlayClick,
-                        onPlayLongPress = if (showManualPlayOption || nextToWatch?.isResume == true) {
+                        isPlayEnabled = isPlayEnabled,
+                        onPlayLongPress = if (isPlayEnabled && (showManualPlayOption || nextToWatch?.isResume == true)) {
                             { showHeroPlayOptionsDialog = true }
                         } else {
                             null
@@ -2086,9 +2128,10 @@ private fun MetaDetailsContent(
                             episodeOptionsOverlayStyle = episodeOptionsOverlayStyle,
                             posterCardCornerRadiusDp = posterCardCornerRadiusDp,
                             onEpisodeClick = episodeClick,
+                            canPlayEpisode = canPlayEpisode,
                             onEpisodeManualPlayClick = episodeManualClick,
                             onEpisodeStartFromBeginningClick = { video ->
-                                markEpisodeRestore(video.id)
+                                if (canPlayEpisode(video)) markEpisodeRestore(video.id)
                                 onEpisodeStartFromBeginningClick(video)
                             },
                             showManualPlayOption = showManualPlayOption,
@@ -2453,7 +2496,7 @@ private fun MetaDetailsContent(
             )
         }
 
-        if (showHeroPlayOptionsDialog) {
+        if (showHeroPlayOptionsDialog && isPlayEnabled) {
             PlayManualOverrideDialog(
                 title = meta.name,
                 subtitle = nextToWatch?.displayText ?: stringResource(R.string.hero_play),
@@ -2628,8 +2671,7 @@ private fun PeopleSectionTabs(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 20.dp, start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl)
-            .focusRestorer(restorerRequester),
+            .padding(top = 20.dp, start = NuvioTheme.spacing.xxxl, end = NuvioTheme.spacing.xxxl),
         verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
     ) {
         @Composable
@@ -2648,6 +2690,7 @@ private fun PeopleSectionTabs(
                     label = item.label,
                     selected = activeTab == item.tab,
                     focusRequester = item.focusRequester,
+                    activeFocusRequester = if (activeTab != item.tab) restorerRequester else null,
                     upFocusRequester = upFocusRequester,
                     downFocusRequester = if (item.tab == PeopleSectionTab.RATINGS) ratingsDownFocusRequester else null,
                     onFocused = { onTabFocused(item.tab) }
@@ -2655,7 +2698,9 @@ private fun PeopleSectionTabs(
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             renderTabs(tabs)
         }
     }
@@ -2667,11 +2712,18 @@ private fun PeopleSectionTabButton(
     label: String,
     selected: Boolean,
     focusRequester: FocusRequester,
+    activeFocusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
     downFocusRequester: FocusRequester? = null,
     onFocused: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isFocused, selected) {
+        if (isFocused && !selected && activeFocusRequester != null) {
+            runCatching { activeFocusRequester.requestFocus() }
+        }
+    }
 
     Card(
         onClick = onFocused,
@@ -2688,7 +2740,9 @@ private fun PeopleSectionTabButton(
             .onFocusChanged { state ->
                 val focusedNow = state.isFocused
                 isFocused = focusedNow
-                if (focusedNow) onFocused()
+                if (focusedNow) {
+                    onFocused()
+                }
             },
         colors = CardDefaults.colors(
             containerColor = Color.Transparent,

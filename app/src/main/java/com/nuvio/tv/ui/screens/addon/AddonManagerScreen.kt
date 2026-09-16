@@ -104,6 +104,7 @@ import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import com.nuvio.tv.domain.repository.WebDavGateway
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.NuvioDialog
+import com.nuvio.tv.ui.util.contentTextDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -1444,7 +1445,9 @@ private fun AddonCardContent(
             Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
             Text(
                 text = addon.description ?: "",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    textDirection = (addon.description ?: "").contentTextDirection()
+                ),
                 color = NuvioTheme.colors.TextSecondary
             )
         }
@@ -1452,7 +1455,9 @@ private fun AddonCardContent(
         Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
         Text(
             text = addon.baseUrl,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.copy(
+                textDirection = addon.baseUrl.contentTextDirection()
+            ),
             color = NuvioTheme.colors.TextTertiary
         )
 

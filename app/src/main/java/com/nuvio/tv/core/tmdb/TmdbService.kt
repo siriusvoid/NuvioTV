@@ -240,9 +240,10 @@ class TmdbService @Inject constructor(
      * 
      * @param videoId The video ID (can be IMDB or TMDB format)
      * @param mediaType The media type
+     * @param fallbackImdbId Optional IMDB ID from meta response
      * @return The TMDB ID as a string, or null if conversion failed
      */
-    suspend fun ensureTmdbId(videoId: String, mediaType: String): String? {
+    suspend fun ensureTmdbId(videoId: String, mediaType: String, fallbackImdbId: String? = null): String? {
         // Check if it's already a TMDB ID (numeric or prefixed)
         // Local library ids carry the TMDB id, so their prefix is stripped first.
         val cleanId = videoId
@@ -267,6 +268,16 @@ class TmdbService @Inject constructor(
         // If it looks like a numeric ID, assume it's already a TMDB ID
         if (idPart.all { it.isDigit() }) {
             return idPart
+        }
+
+        // Fallback: use the IMDB ID supplied by the addon's meta response
+        val normalizedFallback = fallbackImdbId
+            ?.trim()
+            ?.substringBefore(':')
+            ?.takeIf { it.startsWith("tt", ignoreCase = true) }
+        if (normalizedFallback != null) {
+            val tmdbId = imdbToTmdb(normalizedFallback, normalizeMediaType(mediaType))
+            if (tmdbId != null) return tmdbId.toString()
         }
         
         // Unknown format

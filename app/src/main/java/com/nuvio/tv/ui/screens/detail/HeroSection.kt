@@ -124,6 +124,7 @@ fun HeroContentSection(
     nextEpisode: Video?,
     nextToWatch: NextToWatch?,
     onPlayClick: () -> Unit,
+    isPlayEnabled: Boolean = true,
     onPlayLongPress: (() -> Unit)? = null,
     isInLibrary: Boolean,
     onToggleLibrary: () -> Unit,
@@ -277,7 +278,8 @@ fun HeroContentSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PlayButton(
-                            text = nextToWatch?.displayText,
+                            text = if (isPlayEnabled) nextToWatch?.displayText else stringResource(R.string.playback_unavailable),
+                            enabled = isPlayEnabled,
                             onClick = onPlayClick,
                             onLongPress = onPlayLongPress,
                             focusRequester = playButtonFocusRequester,
@@ -389,6 +391,7 @@ private const val HERO_ACTION_FOCUSED_SCALE = 1.05f
 @Composable
 private fun PlayButton(
     text: String?,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
     focusRequester: FocusRequester? = null,
@@ -411,6 +414,7 @@ private fun PlayButton(
     )
 
     Button(
+        enabled = enabled,
         onClick = {
             if (longPressTriggered) {
                 longPressTriggered = false
@@ -434,14 +438,14 @@ private fun PlayButton(
                 ) {
                     return@onPreviewKeyEvent true
                 }
-                if (onLongPress != null && native.action == AndroidKeyEvent.ACTION_DOWN) {
+                if (enabled && onLongPress != null && native.action == AndroidKeyEvent.ACTION_DOWN) {
                     if (native.keyCode == AndroidKeyEvent.KEYCODE_MENU) {
                         longPressTriggered = true
                         onLongPress()
                         return@onPreviewKeyEvent true
                     }
                 }
-                if (onLongPress != null &&
+                if (enabled && onLongPress != null &&
                     longPressKeyTracker.handle(native, ::isSelectKey) {
                         longPressTriggered = true
                         onLongPress()

@@ -57,6 +57,7 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.contentTextDirection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -80,7 +81,9 @@ fun SynopsisDescription(
     val interactionSource = remember { MutableInteractionSource() }
     val highlightInset = 12.dp
     val textMeasurer = rememberTextMeasurer()
-    val textStyle = MaterialTheme.typography.bodyMedium
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(
+        textDirection = description.contentTextDirection()
+    )
 
     BoxWithConstraints(modifier = modifier) {
         val availableWidthPx = constraints.maxWidth
@@ -316,7 +319,9 @@ fun SynopsisOverlay(
                 ) {
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            textDirection = description.contentTextDirection()
+                        ),
                         color = Color.White.copy(alpha = 0.92f),
                         modifier = Modifier
                             .fillMaxWidth()
