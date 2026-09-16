@@ -54,12 +54,18 @@ internal fun PlayerRuntimeController.skipActiveInterval(): Boolean {
 }
 
 internal fun PlayerRuntimeController.skipInterval(interval: SkipInterval): Boolean {
+    if (interval.type == "post-credits") return false
     val duration = currentPlaybackDurationMs().takeIf { it > 0 } ?: Long.MAX_VALUE
-    val seekMs = if (interval.endTime == Double.MAX_VALUE) {
+    val postCredits = interval.followingPostCreditsScene(skipIntervals, currentPlaybackDurationMs())
+    val targetTime = postCredits?.startTime ?: interval.endTime
+    val seekMs = if (targetTime == Double.MAX_VALUE) {
         duration
     } else {
-        (interval.endTime * 1000).toLong()
+        (targetTime * 1000).toLong()
     }
+    val seekParameters = if (postCredits != null || interval.type == "movie-credits") {
+        SeekParameters.EXACT
+    } else SeekParameters.NEXT_SYNC
     val target = seekMs.coerceAtMost(duration)
     val mpvReadyNow = mpvView?.let { view ->
         currentPlaybackDurationMs() > 0L || view.currentPositionMs() > 0L || hasRenderedFirstFrame
@@ -67,7 +73,7 @@ internal fun PlayerRuntimeController.skipInterval(interval: SkipInterval): Boole
     if (isUsingMpvEngine() && !mpvReadyNow) {
         _uiState.update { it.copy(pendingSeekPosition = target) }
     } else {
-        seekPlaybackTo(target, SeekParameters.NEXT_SYNC)
+        seekPlaybackTo(target, seekParameters)
     }
     scheduleProgressSyncAfterSeek()
     _uiState.update { it.copy(activeSkipInterval = null, skipIntervalDismissed = true) }

@@ -175,6 +175,7 @@ data class PlayerUiState(
     val parentalGuideHasShown: Boolean = false,
     // Skip intro
     val activeSkipInterval: SkipInterval? = null,
+    val activeSkipTargetsPostCredits: Boolean = false,
     val skipIntervalDismissed: Boolean = false,
     // Intro/recap/outro segments shown as markers on the progress bar
     val timelineSegments: List<SkipInterval> = emptyList(),
