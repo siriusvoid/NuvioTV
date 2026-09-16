@@ -6,6 +6,7 @@ import com.nuvio.tv.core.sync.AddonSyncService
 import com.nuvio.tv.data.local.AddonPreferences
 import com.nuvio.tv.data.remote.api.AddonApi
 import com.nuvio.tv.data.remote.dto.AddonManifestDto
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -257,12 +258,18 @@ class AddonManifestPlaceholderTest {
         every { preferences.addonEnabledStates } returns flowOf(emptyMap())
         coEvery { preferences.removeAddon(any()) } returns true
 
+        val localLibraryGateway = mockk<LocalLibraryGateway>()
+        every { localLibraryGateway.synthesizeAddon() } returns flowOf(null)
+        every { localLibraryGateway.isLocalLibrary(any(), any()) } returns false
+        every { localLibraryGateway.isLocalId(any()) } returns false
+
         return Harness(
             repository = AddonRepositoryImpl(
                 api = api,
                 preferences = preferences,
                 addonSyncService = mockk<AddonSyncService>(relaxed = true),
                 authManager = mockk<AuthManager>(relaxed = true),
+                localLibraryGateway = localLibraryGateway,
                 context = newContext(),
                 dispatcher = dispatcher,
                 clock = clock

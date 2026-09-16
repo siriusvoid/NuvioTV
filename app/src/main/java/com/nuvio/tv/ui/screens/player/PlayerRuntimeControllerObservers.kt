@@ -10,6 +10,7 @@ import com.nuvio.tv.data.local.InternalPlayerEngine
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.enabledAddons
+import com.nuvio.tv.domain.repository.LocalLibraryGateway
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -659,6 +660,27 @@ internal fun PlayerRuntimeController.fetchSkipIntervals(id: String?, season: Int
             setSkipIntervals(withTimeoutOrNull(15_000L) {
                 skipIntroRepository.getSkipIntervalsForKitsu(kitsuId, kitsuEpisode, imdbId = imdbId, imdbSeason = season, imdbEpisode = episode)
             } ?: emptyList())
+        }
+        return
+    }
+
+    // Local ids carry the TMDB id; resolve it to IMDB so skip-segment providers work on-device.
+    if (effectiveId.startsWith(LocalLibraryGateway.LOCAL_ID_PREFIX)) {
+        if (season == null || episode == null) return
+        val tmdbId = effectiveId.removePrefix(LocalLibraryGateway.LOCAL_ID_PREFIX)
+            .split(":").getOrNull(1)?.toIntOrNull() ?: return
+        val key = "local:$tmdbId:$season:$episode"
+        if (skipIntroFetchedKey == key) return
+        skipIntroFetchedKey = key
+        scope.launch {
+            val resolvedImdb = withTimeoutOrNull(10_000L) { tmdbService.tmdbToImdb(tmdbId, "tv") }
+            setSkipIntervals(
+                if (resolvedImdb != null) {
+                    withTimeoutOrNull(15_000L) {
+                        skipIntroRepository.getSkipIntervals(resolvedImdb, season, episode)
+                    } ?: emptyList()
+                } else emptyList()
+            )
         }
         return
     }
